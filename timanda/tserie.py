@@ -359,8 +359,8 @@ class TSerie:
     def plot(self):
         plt.figure()
         plt.title(self.label)
-        # plt.plot(self.mjd_tab, self.val_tab)
-        plt.scatter(self.mjd_tab, self.val_tab*0, s=700, marker="|")
+        plt.plot(self.mjd_tab, self.val_tab)
+        # plt.scatter(self.mjd_tab, self.val_tab*0, s=700, marker="|")
         plt.show()
 
     def plot_pqg(self, minusmjd):
@@ -401,14 +401,22 @@ class TSerie:
         w.setTitle(self.label+'_ADEV')
         return w
 
-    def plot_allan(self, atom='88Sr', fabs=None, out_file_name=None):
-        if atom == '88Sr':
-            fabs = 429228066418012
-        t = np.power(10, np.arange(1, int(np.log10(self.len_s))+0.1, 0.1))
-        y = self.val_tab/fabs
-        r = self.len_s/self.len
-        a = al.Dataset(data=y, rate=r, data_type="freq", taus=t)
-        a.compute('adev')
+    def plot_allan(self, **kwargs):
+        """
+        Plots allan deviation using allantools
+
+        Params:
+            atom (str): name of atom ('88Sr') used to set fabs if not None
+            fabs (num): absolute frequency used to calculate relative values
+            out_file_name (str): name of the output file (without extension) with the plot,
+            it None - the plot is displayed on screen
+            method (str): method of calculation ('adev', 'mdev', 'oadev')
+
+        Return:
+            dictionary: with data - keys: 'taus', 'stat', 'stat_err', 'stat_n', 'stat_id'
+        """
+        out_file_name = kwargs.pop("out_file_name", None)
+        a = self._compute_allan(**kwargs)
         b = al.Plot()
         b.plot(a, errorbars=True, grid=True)
         if out_file_name:
@@ -416,6 +424,42 @@ class TSerie:
             plt.close()
         else:
             b.show()
+
+    def compute_allan(self, **kwargs):
+        """
+        Computes allan deviation using allantools
+
+        Params:
+            atom (str): name of atom ('88Sr') used to set fabs if not None
+            fabs (num): absolute frequency used to calculate relative values
+            method (str): method of calculation ('adev', 'mdev', 'oadev')
+
+        Return:
+            dictionary: with keys 'taus', 'stat', 'stat_err', 'stat_n', 'stat_id'
+        """
+        a = self._compute_allan(**kwargs)
+        return a.out
+
+    def _compute_allan(self, atom=None, fabs=1, method='adev', **kwargs):
+        """
+        Computes allan deviation using allantools
+
+        Params:
+            atom (str): name of atom ('88Sr') used to set fabs if not None
+            fabs (num): absolute frequency used to calculate relative values
+            method (str): method of calculation ('adev', 'mdev', 'oadev')
+
+        Return:
+            allantools object
+        """
+        if atom == '88Sr':
+            fabs = 429228066418012
+        # t = np.power(10, np.arange(1, int(np.log10(self.len_s))+0.1, 0.1))
+        y = self.val_tab / fabs
+        r = self.len_s / self.len
+        a = al.Dataset(data=y, rate=r, data_type="freq")
+        a.compute(method)
+        return a
 
     def scatter(self):
         plt.scatter(self.mjd_tab, self.val_tab)

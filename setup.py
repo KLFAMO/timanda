@@ -11,5 +11,6 @@ setup(
         'numpy>=1.24.1',
         'pandas>=2.2.1',
         'pyqtgraph>=0.13.1',
+        'reportlab',
     ],
 )
