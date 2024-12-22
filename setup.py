@@ -8,6 +8,7 @@ setup(
         'allantools>=2019.9',
         'astropy>=5.2.1',
         'matplotlib>=3.6.3',
+        'mysqlclient',
         'numpy>=1.24.1',
         'pandas>=2.2.1',
         'pyqtgraph>=0.13.1',

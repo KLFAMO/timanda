@@ -1,6 +1,7 @@
+import getpass
 import MySQLdb as db
 import numpy as np
-import time_tools as tit
+from . import time_tools as tit
 import socket
 import pickle as pkl
 import struct
@@ -10,7 +11,10 @@ def connect():
     Returns:
         handler to connection
     """
-    return db.connect( host='localhost', user='', password='', db='measurements')
+    host = input("Enter database host: ")
+    user = input("Enter database username: ")
+    password = getpass.getpass("Enter database password: ")
+    return db.connect( host=host, user=user, password=password, db='measurements')
 
 def gettables():
     """Get all tables in database
