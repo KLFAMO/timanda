@@ -5,3 +5,6 @@ dist/
 __pycache__/*.pyc
 __pycache__/
 timanda/__pycache__/__init__.cpython-311.pyc
+keyfile.key
+password.enc
+.env

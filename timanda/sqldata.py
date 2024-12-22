@@ -3,18 +3,99 @@ import MySQLdb as db
 import numpy as np
 from . import time_tools as tit
 import socket
+import os
 import pickle as pkl
 import struct
+from dotenv import load_dotenv
+from cryptography.fernet import Fernet
+
+load_dotenv()
+
+# Retrieve configuration from .env
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_NAME = os.getenv("DB_NAME")
+KEY_FILE = os.getenv("KEY_FILE")
+ENCRYPTED_PASSWORD_FILE = os.getenv("ENCRYPTED_PASSWORD_FILE")
+
+
+def generate_key():
+    """Generate and save an encryption key."""
+    if not os.path.exists(KEY_FILE):
+        key = Fernet.generate_key()
+        with open(KEY_FILE, "wb") as key_file:
+            key_file.write(key)
+
+
+def load_key():
+    """Load the encryption key."""
+    if not os.path.exists(KEY_FILE):
+        raise FileNotFoundError(f"Key file not found: {KEY_FILE}")
+    with open(KEY_FILE, "rb") as key_file:
+        return key_file.read()
+
+
+def save_encrypted_password(password):
+    """Encrypt and save the password to a file."""
+    key = load_key()
+    fernet = Fernet(key)
+    encrypted_password = fernet.encrypt(password.encode())
+    with open(ENCRYPTED_PASSWORD_FILE, "wb") as file:
+        file.write(encrypted_password)
+
+
+def load_encrypted_password():
+    """Load and decrypt the password from the encrypted file."""
+    if not os.path.exists(ENCRYPTED_PASSWORD_FILE):
+        return None
+    key = load_key()
+    fernet = Fernet(key)
+    with open(ENCRYPTED_PASSWORD_FILE, "rb") as file:
+        encrypted_password = file.read()
+    return fernet.decrypt(encrypted_password).decode()
+
+
+def configure():
+    """Prompt the user for configuration and save the password securely."""
+    if not DB_HOST or not DB_USER or not DB_NAME:
+        print("Please ensure DB_HOST, DB_USER, and DB_NAME are set in the .env file.")
+        return
+
+    password = load_encrypted_password()
+    if not password:
+        from getpass import getpass
+        password = getpass("Enter database password: ")
+        save_encrypted_password(password)
+        print("Password saved securely.")
+
+    print("Configuration saved successfully.")
+
 
 def connect():
-    """Connect to MySQL database on corridor    
+    """Connect to the MySQL database using the stored configuration in .env.    
     Returns:
         handler to connection
     """
-    host = input("Enter database host: ")
-    user = input("Enter database username: ")
-    password = getpass.getpass("Enter database password: ")
-    return db.connect( host=host, user=user, password=password, db='measurements')
+    password = load_encrypted_password()
+    if not password:
+        print("Password not found. Run configure() first.")
+        return None
+        
+    # return db.connect( host=host, user=user, password=password, db='measurements')
+    try:
+        connection = db.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=password,
+            database=DB_NAME
+        )
+        if connection:
+            print("Connected to MySQL server!")
+            return connection
+    except Error as e:
+        print(f"Error: {e}")
+    return None
+
 
 def gettables():
     """Get all tables in database
@@ -23,6 +104,7 @@ def gettables():
     """
     res = dbquery('SHOW tables')
     return [ x[0] for x in res ]
+
 
 def dbquery(sql_query):
     """ Connect to database and send SQL query
@@ -40,6 +122,7 @@ def dbquery(sql_query):
     except:
         print('Error: problem with database query sending')
         return None
+
 
 def dbquery_rm(querstr):
     """Sending SQL query through TCP server
@@ -72,6 +155,7 @@ def dbquery_rm(querstr):
     #print('Data: ',out)
     return out
 
+
 def get_logs(fmjd:float, tmjd:float) -> str:
     """Get logs from database
 
@@ -90,6 +174,7 @@ def get_logs(fmjd:float, tmjd:float) -> str:
             " )  and new_id IS NULL ; ")
     return res
 
+
 def get_err_logs(fmjd, tmjd, l):
     res = get_logs(fmjd,tmjd)
     for x in res:
@@ -106,6 +191,7 @@ def sendMessage(mjd, mjd2, mes, tag):
             mes+"','"+tag+"');" )
     dbsend(s)
 
+
 def modifyMessage( mjd,mjd2, mes,tag, prev_id):
     s =( "INSERT INTO logs (mjd, mjd2, mes, tag, prev_id) VALUES ("+
             "'"+mjd +"','"
@@ -113,6 +199,7 @@ def modifyMessage( mjd,mjd2, mes,tag, prev_id):
     i = dbsend(s)
     s = "UPDATE logs SET new_id = %d WHERE id = %s;"%(i,prev_id) 
     dbsend(s)
+
 
 def dbsend(querstr):
     try:
@@ -127,6 +214,7 @@ def dbsend(querstr):
     except:
         print('remote dbsend')
         return dbsend_rm(querstr)
+
 
 def dbsend_rm(querstr):
     s = socket.socket()
@@ -154,6 +242,7 @@ def dbsend_rm(querstr):
     out = pkl.loads(bout)
     return out
 
+
 def get_logs(fmjd, tmjd):
     res = dbquery( "select * from logs where" +
            " ( ( mjd>%f and mjd<%f) "%(fmjd,tmjd) +
@@ -161,6 +250,7 @@ def get_logs(fmjd, tmjd):
             " or (mjd<%f and mjd2>%f) "%(fmjd,tmjd) +
             " )  and new_id IS NULL ; ")
     return res
+
 
 def dbsend_tmvl(tmvl):
     con = connect()
@@ -185,11 +275,13 @@ def dbsend_tmvl(tmvl):
     cur.close()
     con.close()
 
+
 def db_create_table(name):
     q = ("CREATE TABLE IF NOT EXISTS "+
             name+
             " (mjd DOUBLE NOT NULL, val DOUBLE NOT NULL);" )
     dbsend(q)
+
 
 def rmerr(mts,l):
     mts.rmemptyseries()
@@ -201,6 +293,7 @@ def rmerr(mts,l):
         mts.rmrange(x[0],x[1])
     return mts
 
+
 def addDataToDatabase(tableName, mjd, val):
     db_create_table(tableName)
     con = connect()
@@ -211,6 +304,7 @@ def addDataToDatabase(tableName, mjd, val):
     cur.close()
     con.close()
     
+
 def addDataRangeToDatabase(tableName, fmjd, tmjd, val, step_mjd=2e-5):
     db_create_table(tableName)
     con = connect()

@@ -7,6 +7,8 @@ setup(
     install_requires=[
         'allantools>=2019.9',
         'astropy>=5.2.1',
+        'cryptography',
+        'python-dotenv',
         'matplotlib>=3.6.3',
         'mysqlclient',
         'numpy>=1.24.1',
