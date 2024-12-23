@@ -106,6 +106,29 @@ def gettables():
     return [ x[0] for x in res ]
 
 
+def getdata(name:str, from_mjd:float=57091.999, to_mjd:float=1000000, last:float=0) -> np.array:
+    """Get measurement data from database
+
+    Args:
+        name (str): name of table in database (table name is also parameter name)
+        from_mjd (float, optional): MJD from which data should taken. Defaults to 57091.999.
+        to_mjd (float, optional): MJD to which data should be taken. Defaults to 1000000.
+        last (float, optional): period last data until now (in seconds) if last>0 arguments from_mjd and to_mjd are ignored. Defaults to 0.
+
+    Returns:
+        np.array: data from database
+    """
+    
+    if last>0:
+        to_mjd = tit.getMJD()
+        from_mjd = to_mjd - last/86400
+
+    results = dbquery( "select * from " + name+
+                    " where mjd>"+str(from_mjd)+
+                    " and mjd<"+str(to_mjd)+" ;")
+    return np.array(results).transpose()
+
+
 def dbquery(sql_query):
     """ Connect to database and send SQL query
     Returns:

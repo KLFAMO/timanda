@@ -10,6 +10,7 @@ import pandas as pd
 import pyqtgraph as pg
 import allantools as al
 from astropy.convolution import Gaussian1DKernel, convolve
+from . import sqldata as sqd
 
 logging.basicConfig(
     level=logging.INFO, format='%(levelname)s - timanda - %(message)s'
@@ -1638,31 +1639,24 @@ def get_test_tserie(fmjd = 50000, tmjd=50001, period_s=1, noise_ampl=1, mean_val
     return TSerie(mjd=mjd_tab, val=val_tab)
 
 
-def get_sql_data(name:str, from_mjd:float=57091.999, to_mjd:float=1000000, last:float=0) -> tls.MTSerie:
-        """Get measurement data from database
+def get_sql_data(name:str, from_mjd:float=57091.999, to_mjd:float=1000000, last:float=0) -> MTSerie:
+    """Get measurement data from database
 
-        Args:
-            name (str): name of table in database (table name is also parameter name)
-            from_mjd (float, optional): MJD from which data should taken. Defaults to 57091.999.
-            to_mjd (float, optional): MJD to which data should be taken. Defaults to 1000000.
-            last (float, optional): period last data until now (in seconds) if last>0 arguments from_mjd and to_mjd are ignored. Defaults to 0.
+    Args:
+        name (str): name of table in database (table name is also parameter name)
+        from_mjd (float, optional): MJD from which data should taken. Defaults to 57091.999.
+        to_mjd (float, optional): MJD to which data should be taken. Defaults to 1000000.
+        last (float, optional): period last data until now (in seconds) if last>0 arguments from_mjd and to_mjd are ignored. Defaults to 0.
 
-        Returns:
-            tls.MTserie: data from database
-        """
-        
-        if last>0:
-            to_mjd = tit.getMJD()
-            from_mjd = to_mjd - last/86400
-
-        results = dbquery( "select * from " + name+
-                        " where mjd>"+str(from_mjd)+
-                        " and mjd<"+str(to_mjd)+" ;")
-        d = np.array(results).transpose()
-        out = MTSerie(label=name)
-        if (0 in np.shape(d)):
-            print('No data in database')
-        else:
-            ts = TSerie( name, mjd=d[0], val=d[1])
-            out.add_TSerie(ser = ts)
-        return out  #MTSerie
+    Returns:
+        MTserie: data from database
+    """
+    
+    d = sqd.getdata(name=name, from_mjd=from_mjd, to_mjd=to_mjd)
+    out = MTSerie(label=name)
+    if (0 in np.shape(d)):
+        print('No data in database')
+    else:
+        ts = TSerie( name, mjd=d[0], val=d[1])
+        out.add_TSerie(ser = ts)
+    return out  #MTSerie
