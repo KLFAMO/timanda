@@ -600,6 +600,13 @@ class MTSerie:
                 out.add_TSerie(self.dtab[i]*b)
         return out
 
+    def __truediv__(self, b):
+        out = MTSerie()
+        if isinstance(b, (int, float)):
+            for i in range(0, len(self.dtab)):
+                out.add_TSerie(self.dtab[i]/b)
+        return out
+
     def __idiv__(self, b):
         if isinstance(b, (int, float)):
             for i in range(0, len(self.dtab)):
