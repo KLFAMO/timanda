@@ -723,12 +723,12 @@ class MTSerie:
         return self.widget
 
     def plot_allan(self, atom=None, ref_val=None, rate=1, taus=None):
+        if atom == '88Sr':
+            ref_val = 429228066418012.0
         if ref_val:
             ref = ref_val
         else:
             ref = 1
-        if atom == '88Sr':
-            ref_val = 429228066418012.0
         y = self.val_tab()/ref
         # y = y.flatten()
         # print('y: ', y)
