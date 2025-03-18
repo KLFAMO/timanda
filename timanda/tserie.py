@@ -665,6 +665,10 @@ class MTSerie:
     def rm_drift_each(self):
         for x in self.dtab:
             x.rm_drift()
+    
+    def get_drift(self):
+        fit = np.polyfit(self.mjd_tab(), self.val_tab(),1)
+        return fit[0]
 
     def add_TSerie(self, ser):
         self.dtab.append(ser)
