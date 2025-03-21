@@ -1088,6 +1088,11 @@ class MTSerie:
         )
 
     def get_sample_period_s(self):
+        """
+        Returns the average sample period in seconds.
+        Based on the length of the time series and the number of points.
+        """
+        
         time = self.getTotalTimeWithoutGaps()
         points = self.get_number_of_points()
         return 24*60*60*time/points
