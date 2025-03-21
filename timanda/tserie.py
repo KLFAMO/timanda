@@ -624,6 +624,10 @@ class MTSerie:
             x.calc_tab()
 
     def rmemptyseries(self):
+        """
+        Removes empty TSeries from MTSerie
+        """
+
         self.calc_tabs()
         self.dtab = [x for x in self.dtab if x.isempty == 0]
 
@@ -993,12 +997,43 @@ class MTSerie:
         f.close()
     
     def first_mjd(self):
+        """
+        Returns the first MJD of MTSerie.
+        """
+
         return self.dtab[0].first_mjd()
     
     def last_mjd(self):
+        """
+        Returns the last MJD of MTSerie.
+        """
+        
         return self.dtab[-1].last_mjd()
         
-    def resample(self, fun='mean', period_s=60, start_mjd=None, points_ratio=0.7):
+    def resample(
+            self,
+            fun: str = 'mean',
+            period_s: float | int = 60,
+            start_mjd: float = None,
+            points_ratio: float = 0.7
+        ):
+        """
+        Resamples the time series to a given period in seconds.
+
+        Args:
+            fun: str
+                function to calculate the value of the resampled point
+                'mean' - mean value
+                'slope' - slope
+                'slope_s' - 
+            period_s: float | int
+                period in seconds
+            start_mjd: float
+                start time in MJD
+            points_ratio: float
+                
+        """
+        
         self.rmemptyseries()
         first_mjd = self.first_mjd()
         first_mjd_int = np.floor(first_mjd)
@@ -1092,7 +1127,7 @@ class MTSerie:
         Returns the average sample period in seconds.
         Based on the length of the time series and the number of points.
         """
-        
+
         time = self.getTotalTimeWithoutGaps()
         points = self.get_number_of_points()
         return 24*60*60*time/points
