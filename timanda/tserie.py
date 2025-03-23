@@ -15,6 +15,9 @@ logging.basicConfig(
     level=logging.INFO, format='%(levelname)s - timanda - %(message)s'
 )
 
+mjd2s = 24*60*60
+s2mjd = 1/mjd2s
+
 class TSerie:
     def __init__(self, label='', mjd=[], val=[], pps=None):
         self.label = label
@@ -537,14 +540,17 @@ class MTSerie:
         if TSerie is not None:
             self.add_TSerie(TSerie)
 
-    def importFromTxtFile(self, fileName):
+    def importFromTxtFile(self, fileName, separator=' '):
+        """
+        Imports MTSerie from txt file
+        """
         f = open(fileName, 'r')
         mjd_t = []
         val_t = []
         for line in f:
             if line[0] != '#':
-                mjd_t.append(float(line.split()[0]))
-                val_t.append(float(line.split()[1]))
+                mjd_t.append(float(line.split(separator)[0]))
+                val_t.append(float(line.split(separator)[1]))
         f.close()
         self.add_TSerie(TSerie(mjd=mjd_t, val=val_t))
         self.split()
@@ -1014,7 +1020,7 @@ class MTSerie:
             self,
             fun: str = 'mean',
             period_s: float | int = 60,
-            start_mjd: float = None,
+            start_mjd: float = None, # not implemented yet
             points_ratio: float = 0.7
         ):
         """
@@ -1029,7 +1035,7 @@ class MTSerie:
             period_s: float | int
                 period in seconds
             start_mjd: float
-                start time in MJD
+                start time of grid in MJD, probably not implemented yet
             points_ratio: float
                 
         """
@@ -1039,11 +1045,14 @@ class MTSerie:
         first_mjd_int = np.floor(first_mjd)
         last_mjd = self.last_mjd()
         last_mjd_int = np.floor(last_mjd)
-        period_mjd = period_s/(24*60*60)
+        period_mjd = period_s*s2mjd
+        
+        # find the last grid point before the first MJD
         start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
+        # find the first grid point after the last MJD
         stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
-        mjd_grid = np.arange(start_mjd, stop_mjd+1e-6, period_mjd)
-        print(start_mjd, stop_mjd)
+        mjd_grid = np.arange(start_mjd, stop_mjd+1e-8, period_mjd)
+
         return self.resample_to_mjd_array(
             mjd_grid=mjd_grid,
             grid_period_s=period_s,
@@ -1054,7 +1063,7 @@ class MTSerie:
     def resample_to_mjd_array(
         self,
         mjd_grid,
-        grid_period_s,
+        grid_period_s, # maybe not needed ?
         fun='mean',
         points_ratio=0.7,
         none_fields=False,
@@ -1069,8 +1078,9 @@ class MTSerie:
         expected_number_of_points = grid_period_s/sample_period_s
         period_mjd = grid_period_s/(24*60*60)
         ts=TSerie()
-        for mjd in mjd_grid:
-            sub_mts = self.getrange(mjd, mjd+period_mjd)
+        for i in range(0, len(mjd_grid)-1):
+            mjd = mjd_grid[i]
+            sub_mts = self.getrange(mjd_grid[i], mjd_grid[i+1])
             if sub_mts and sub_mts.get_number_of_points() > expected_number_of_points*points_ratio:
                 if fun=='mean':
                     calc = sub_mts.mean()
@@ -1502,8 +1512,23 @@ class GTserie:
             self.split_mjd_group(mjd_group=mjd_group, min_gap_s=min_gap_s)
 
     def resample(self, fun='mean', period_s=60, start_mjd=None, points_ratio=0.1):
+        """
+        Resamples all time MTseries to a given period in seconds.
+
+        Args:
+            fun: str
+                function to calculate the value of the resampled point
+                'mean' - mean value
+                'slope' - slope
+                'slope_s' -
+            period_s: float | int
+                period in seconds
+            start_mjd: float
+                start time in MJD for resampling
+            points_ratio: float
+        """
+
         for a in self.mts_dict:
-            print('************', a)
             self.mts_dict[a] = self.mts_dict[a].resample(
                 fun=fun,
                 period_s=period_s,
