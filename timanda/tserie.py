@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 mjd2s = 24*60*60
-s2mjd = 1/mjd2s
+s2mjd = 1./mjd2s
 
 class TSerie:
     def __init__(self, label='', mjd=[], val=[], pps=None):
@@ -109,7 +109,8 @@ class TSerie:
             self.isempty = 0
             self.mjd_start = self.mjd_tab[0]
             self.mjd_stop = self.mjd_tab[-1]
-            self.mean = np.mean(self.val_tab)
+            filtered = [x for x in self.val_tab if x is not None]
+            self.mean = np.mean(filtered)
         else:
             self.isempty = 1
             self.mjd_start = 0
@@ -540,7 +541,7 @@ class MTSerie:
         if TSerie is not None:
             self.add_TSerie(TSerie)
 
-    def importFromTxtFile(self, fileName, separator=' '):
+    def importFromTxtFile(self, fileName, delimiter=' '):
         """
         Imports MTSerie from txt file
         """
@@ -549,8 +550,8 @@ class MTSerie:
         val_t = []
         for line in f:
             if line[0] != '#':
-                mjd_t.append(float(line.split(separator)[0]))
-                val_t.append(float(line.split(separator)[1]))
+                mjd_t.append(float(line.split(delimiter)[0]))
+                val_t.append(float(line.split(delimiter)[1]))
         f.close()
         self.add_TSerie(TSerie(mjd=mjd_t, val=val_t))
         self.split()
@@ -676,8 +677,16 @@ class MTSerie:
         for x in self.dtab:
             x.rm_drift()
     
+    def rm_drift(self):
+        fit = np.polyfit(self.mjd_tab(), self.val_tab(), 1)
+        _mean = self.mean()
+        for x in self.dtab:
+            x.val_tab = (
+                x.val_tab - (x.mjd_tab*fit[0]+fit[1] + _mean)
+            )
+    
     def get_drift(self):
-        fit = np.polyfit(self.mjd_tab(), self.val_tab(),1)
+        fit = np.polyfit(self.mjd_tab(), self.val_tab(), 1)
         return fit[0]
 
     def add_TSerie(self, ser):
@@ -691,8 +700,8 @@ class MTSerie:
         raw = np.load(file_name, allow_pickle=True)
         self.add_mjdf_data(raw[:, 0], raw[:, 1])
 
-    def add_mjdf_from_datfile(self, file_name):
-        raw = np.loadtxt(file_name)
+    def add_mjdf_from_datfile(self, file_name, delimiter=' ', skiprows=0):
+        raw = np.loadtxt(file_name, delimiter=delimiter, skiprows=skiprows)
         self.add_mjdf_data(raw[:, 0], raw[:, 1])
 
     def plot(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
@@ -702,7 +711,7 @@ class MTSerie:
                 color = self.color
             if ax is None:
                 plt.plot(x.mjd_tab, x.val_tab-self.plot_ref_val,
-                         color=color, marker=marker,
+                          color=color, marker=marker,
                          linestyle=linestyle, zorder=zorder)
             else:
                 ax.plot(x.mjd_tab, x.val_tab-self.plot_ref_val,
@@ -732,7 +741,7 @@ class MTSerie:
             self.widget.setTitle(self.label)
         return self.widget
 
-    def plot_allan(self, atom=None, ref_val=None, rate=1, taus=None):
+    def plot_allan(self, atom=None, ref_val=None, rate=1, taus=None, allan_method='adev'):
         if atom == '88Sr':
             ref_val = 429228066418012.0
         if ref_val:
@@ -745,13 +754,13 @@ class MTSerie:
         if taus is None:
             taus = np.power(10, np.arange(0, int(np.log10(len(y)/rate))+0.1, 0.1))
         a = al.Dataset(data=y, rate=rate, data_type="freq", taus=taus)
-        a.compute('adev')
+        a.compute(allan_method)
         b = al.Plot()
         b.plot(a, errorbars=True, grid=True)
         b.show()
 
     def sew(self, grid_s=1):
-        g = grid_s/(24*60*60)
+        g = grid_s*s2mjd
         out = []
         for x in self.dtab:
             for mjd in np.arange(x.mjd_tab[0], x.mjd_tab[-1], g):
@@ -1021,7 +1030,8 @@ class MTSerie:
             fun: str = 'mean',
             period_s: float | int = 60,
             start_mjd: float = None, # not implemented yet
-            points_ratio: float = 0.7
+            points_ratio: float = 0.7,
+            get_empty_mjd_ranges: bool = False
         ):
         """
         Resamples the time series to a given period in seconds.
@@ -1051,15 +1061,68 @@ class MTSerie:
         start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
         # find the first grid point after the last MJD
         stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
-        mjd_grid = np.arange(start_mjd, stop_mjd+1e-8, period_mjd)
+        mjd_grid = np.arange(start_mjd, stop_mjd+1e-7, period_mjd)
 
         return self.resample_to_mjd_array(
             mjd_grid=mjd_grid,
             grid_period_s=period_s,
             fun=fun,
             points_ratio=points_ratio,
+            get_empty_mjd_ranges=get_empty_mjd_ranges
         )
 
+    def resample2(self, period_s, sh_s=0.05, tol_s=7, start_mjd=None, stop_mjd=None):
+        """
+        Resamples the time series to a given period in seconds.
+        Based on loop in numpy array.
+        Should be faster than resample().
+        """
+
+        tol_mjd = tol_s*s2mjd
+        sh_mjd = sh_s*s2mjd
+        first_mjd = self.first_mjd()
+        first_mjd_int = np.floor(first_mjd)
+        last_mjd = self.last_mjd()
+        last_mjd_int = np.floor(last_mjd)
+        period_mjd = period_s*s2mjd
+        # find the last grid point before the first MJD
+        if start_mjd is None:
+            start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
+        # find the first grid point after the last MJD
+        if stop_mjd is None:
+            stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
+        nm = np.arange(start_mjd, stop_mjd, period_mjd)
+        nv = np.zeros_like(nm, dtype=float)
+        rm_mask = np.zeros_like(nm, dtype=bool)
+        ov = self.val_tab()
+        om = self.mjd_tab()
+        print(nm[0], nm[-1])
+
+        # main iterations for all mts
+        oi = 0
+        for ni in range(len(nm)):
+            # print(ni)
+            dif = 1
+            v = None
+            while (om[oi] < nm[ni]+sh_mjd and oi < len(om)-1):
+                dif = nm[ni]-om[oi]
+                # print(f'dif: {dif}')
+                v = ov[oi]
+                oi = oi+1
+            if v:
+                nv[ni] = v
+            else:
+                if om[oi] - nm[ni] < tol_mjd:
+                    nv[ni] = ov[oi]
+                else:
+                    nv[ni] = 0
+                    rm_mask[ni] = True
+            # print(f"nm: {nm[ni]}, om: {om[oi]}, dif: {dif}")
+        nts = TSerie(mjd=nm, val=nv)
+        nmts = MTSerie()
+        nmts.add_TSerie(nts)
+        return nmts, rm_mask
+            
     def resample_to_mjd_array(
         self,
         mjd_grid,
@@ -1068,20 +1131,42 @@ class MTSerie:
         points_ratio=0.7,
         none_fields=False,
         none_val=None,
+        get_empty_mjd_ranges=False,
     ):
         """
         params:
             mjd_grid: np.array 1D
+                array of MJDs to resample to
+            grid_period_s: float
+                period of the grid in seconds
+            fun: str
+                function to calculate the value of the resampled point
+                'mean' - mean value
+                'slope' - slope
+                'slope_s' -
+            points_ratio: float
+                ratio of points in the subseries to the expected number of points
+                in the resampled series
+            none_fields: bool
+                if True, the resampled series will contain None values for the
+                points that were not resampled
+            none_val: any
+                value to use for the None fields
         """
 
         sample_period_s = self.get_sample_period_s()
         expected_number_of_points = grid_period_s/sample_period_s
         period_mjd = grid_period_s/(24*60*60)
         ts=TSerie()
+        empty_mjd_ranges = []
         for i in range(0, len(mjd_grid)-1):
             mjd = mjd_grid[i]
             sub_mts = self.getrange(mjd_grid[i], mjd_grid[i+1])
-            if sub_mts and sub_mts.get_number_of_points() > expected_number_of_points*points_ratio:
+            if (
+                sub_mts and 
+                # sub_mts.get_number_of_points() > expected_number_of_points*points_ratio and
+                sub_mts.mean() is not None
+            ):
                 if fun=='mean':
                     calc = sub_mts.mean()
                 if fun=='slope':
@@ -1094,7 +1179,7 @@ class MTSerie:
                         val=calc,
                         pps=sub_mts.get_number_of_points()
                     )
-                    ts.__str__()
+                    ts.calc_tab()
                 else:
                     ts.append(
                         mjd=mjd,
@@ -1107,11 +1192,17 @@ class MTSerie:
                         mjd=mjd,
                         val=none_val,
                     )
-                    ts.__str__()
+                    ts.calc_tab()
+                else:
+                    if get_empty_mjd_ranges:
+                        empty_mjd_ranges.append((mjd_grid[i], mjd_grid[i+1]))
         out_mts = MTSerie(TSerie=ts)
-        out_mts.split(min_gap_s=grid_period_s*1.7)
+        out_mts.split(min_gap_s=grid_period_s*1.5)
         # out_mts.rmemptyseries()
-        return out_mts
+        if get_empty_mjd_ranges:
+            return out_mts, empty_mjd_ranges
+        else:
+            return out_mts
 
     def resample_to_mts_grid(
         self,
@@ -1140,7 +1231,7 @@ class MTSerie:
 
         time = self.getTotalTimeWithoutGaps()
         points = self.get_number_of_points()
-        return 24*60*60*time/points
+        return mjd2s*time/points
 
     def get_number_of_points(self):
         num_of_points = 0
@@ -1440,6 +1531,26 @@ class GTserie:
                 ),
                 mjd_group=name+'_mjd',
             )
+
+    def get_mtss_names(self):
+        return self.mts_dict
+
+    def first_mjd(self):
+        """
+        Returns the first MJD of GTserie.
+        """
+
+        first_mtss_mjds = [self.mts_dict[mts].first_mjd() for mts in self.mts_dict]
+        print(first_mtss_mjds)
+        return min(first_mtss_mjds)
+
+    def last_mjd(self):
+        """
+        Returns the last MJD of GTserie.
+        """
+
+        last_mtss_mjds = [self.mts_dict[mts].last_mjd() for mts in self.mts_dict]
+        return max(last_mtss_mjds)
     
     def print_all_mts(self):
         for a in self.mts_dict:
@@ -1476,9 +1587,15 @@ class GTserie:
         for mts in mtss:
             self.mts_dict[mts].rm_indexes(indexes)
 
-    def rm_outlayers(self, mts_name):
+    def rm_outlayers(self, mts_name, target=None, maxdiff=None):
+        """
+        Removes outlayers from MTSerie and from other MTseries in the same mjd group.
+        """
         mts = self.mts_dict[mts_name]
-        indexes_to_delete_iterated = mts.rmoutlayers()
+        indexes_to_delete_iterated = mts.rmoutlayers(
+            target=target,
+            maxdiff=maxdiff,
+        )
         mjd_group = self.mjd_groups[mts_name]
         for indexes_to_delete in indexes_to_delete_iterated:
             self.rm_indexes_from_mjd_group(
@@ -1529,12 +1646,17 @@ class GTserie:
         """
 
         for a in self.mts_dict:
-            self.mts_dict[a] = self.mts_dict[a].resample(
+            self.mts_dict[a], mjd_ranges_to_rm = self.mts_dict[a].resample(
                 fun=fun,
                 period_s=period_s,
                 start_mjd=start_mjd,
                 points_ratio=points_ratio,
+                get_empty_mjd_ranges=True,
             )
+            print(a)
+            print(mjd_ranges_to_rm)
+            for mjd_range in mjd_ranges_to_rm:
+                self.rm_range(mjd_range[0], mjd_range[1])
 
     def resample_to_mts(
         self,
@@ -1585,7 +1707,34 @@ class GTserie:
             # g.rm_value('nmij_frac_freq', none_val)
         if new_gts:
             return g     
-        
+
+    def resample2(self, period_s):
+        first_mjd = self.first_mjd()
+        first_mjd_int = np.floor(first_mjd)
+        last_mjd = self.last_mjd()
+        last_mjd_int = np.floor(last_mjd)
+        period_mjd = period_s*s2mjd
+        # find the last grid point before the first MJD
+        start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
+        # find the first grid point after the last MJD
+        stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
+        nm = np.arange(start_mjd, stop_mjd+1e-7, period_mjd)
+
+        # prepare np.arrays for all mts
+        nv = dict()
+        ov = dict()
+        om = dict()
+        for mtn in self.mts_dict:
+            nv[mtn] = np.zeros(len(s), type=float)
+            ov[mtn] = self.mts_dict[mtn].mjd_val()
+            om[mtn] = self.mts_dict[mtn].mjd_val()
+
+        # main iterations for all mts
+        for ni in range(len(nm)-1):
+            nmjd = nm[ni]
+            for mts_name in self.mts_dict:
+                print(ni)
+
     def add_mts_to_mts(self, mts_name_1, mts_name_2, mts_name_out):
         mts1=self.mts_dict[mts_name_1]
         mts2=self.mts_dict[mts_name_2]
