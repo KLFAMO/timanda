@@ -1071,11 +1071,31 @@ class MTSerie:
             get_empty_mjd_ranges=get_empty_mjd_ranges
         )
 
-    def resample2(self, period_s, sh_s=0.05, tol_s=7, start_mjd=None, stop_mjd=None):
+    def resample2(
+            self, period_s: float | int = 1,
+            sh_s: float | int = 0.05,
+            tol_s: float | int = 7,
+            start_mjd: float = None,
+            stop_mjd: float = None
+        ):
         """
         Resamples the time series to a given period in seconds.
         Based on loop in numpy array.
         Should be faster than resample().
+
+        Args:
+            period_s: float | int
+                sampling period in seconds
+            sh_s: float | int
+                shift in seconds, used for instance in case where counter receives data exactly at integer seconds
+                but data comes few ms later - it is possible to shift a little this grid to capture the redout
+                as in previous second nod current second
+            tol_s: float | int
+                tolerance in seconds
+            start_mjd: float
+                start time of grid in MJD, if None - it is calculated from the first MJD
+            stop_mjd: float
+                stop time of grid in MJD, if None - it is calculated from the last MJD
         """
 
         tol_mjd = tol_s*s2mjd
@@ -1100,10 +1120,11 @@ class MTSerie:
 
         # main iterations for all mts
         oi = 0
+        v = None
         for ni in range(len(nm)):
             # print(ni)
             dif = 1
-            v = None
+            
             while (om[oi] < nm[ni]+sh_mjd and oi < len(om)-1):
                 dif = nm[ni]-om[oi]
                 # print(f'dif: {dif}')
