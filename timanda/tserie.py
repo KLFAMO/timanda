@@ -1570,6 +1570,8 @@ class GTserie:
         for i, mts_name in enumerate(mts_names):
             self.mts_dict[mts_name].plot(ax=axs[i], show=0, zorder=zorder)
             axs[i].grid(True)
+            if self.mts_dict[mts_name].plot_label == '':
+                self.mts_dict[mts_name].plot_label = mts_name
             axs[i].set_ylabel(self.mts_dict[mts_name].plot_label)
         plt.tight_layout()
         if show:
