@@ -1007,7 +1007,8 @@ class MTSerie:
             length = len(x.mjd_tab)
             f.write('#\n')
             while i < length:
-                f.write('%f\t%f\n' % (x.mjd_tab[i], x.val_tab[i]))
+                # f.write('%f\t%f\n' % (x.mjd_tab[i], x.val_tab[i]))
+                f.write(f'{x.mjd_tab[i]:.10f}\t{x.val_tab[i]:.10f}\n')
                 i = i+1
         f.close()
     
@@ -1640,6 +1641,13 @@ class GTserie:
     def rm_range(self, from_mjd, to_mjd):
         for a in self.mts_dict:
             self.mts_dict[a].rmrange(from_mjd, to_mjd)
+
+    def get_range(self, from_mjd, to_mjd):
+        """
+        Returns the range of all MTseries in the given time period.
+        """
+        self.rm_range(self.first_mjd(), from_mjd)
+        self.rm_range(to_mjd, self.last_mjd())
     
     def split_mjd_group(self, mjd_group, min_gap_s=160):
         mtss = self.get_mtss_from_mjd_group(mjd_group)
