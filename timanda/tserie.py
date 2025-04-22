@@ -220,6 +220,7 @@ class TSerie:
         out: index of the nearest mjd <= input_mjd
              None if mjd is out of table
         """
+        self.__str__()
         if mjd < self.mjd_start or mjd > self.mjd_stop:
             return None
         if init_index is None:
@@ -307,6 +308,8 @@ class TSerie:
             return ([left, right], 4)
     
     def rm_indexes(self, indexes):
+        if indexes is None:
+            return
         self.mjd_tab = np.delete(self.mjd_tab, indexes)
         self.val_tab = np.delete(self.val_tab, indexes)
         self.pps_tab = np.delete(self.pps_tab, indexes)
@@ -321,6 +324,10 @@ class TSerie:
 
     def rmOutlayersOfTarget(self, target, maxDifference, get_indexes_only=False):
         indexes_to_delete = []
+        if target is None:
+            target = self.mean()
+        if maxDifference is None:
+            maxDifference = 5*self.std()
         i = 0
         self.len=len(self.mjd_tab)
         while i < self.len:
