@@ -708,8 +708,18 @@ class MTSerie:
         self.add_mjdf_data(raw[:, 0], raw[:, 1])
 
     def add_mjdf_from_datfile(self, file_name, delimiter=' ', skiprows=0):
-        raw = np.loadtxt(file_name, delimiter=delimiter, skiprows=skiprows)
-        self.add_mjdf_data(raw[:, 0], raw[:, 1])
+        try:
+            raw = np.loadtxt(file_name, delimiter=delimiter, skiprows=skiprows)
+            if raw.size == 0:
+                print(f"File '{file_name}' is empty.")
+                return
+            self.add_mjdf_data(raw[:, 0], raw[:, 1])
+        except FileNotFoundError:
+            print(f"File '{file_name}' doesn't exist.")
+        except ValueError as e:
+            print(f"Error while reading file '{file_name}': {e}")
+        except Exception as e:
+            print(f"Unexpected error during reading file '{file_name}': {e}")
 
     def plot(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
              nolabels=False):
@@ -1830,6 +1840,28 @@ class GTserie:
             out_ts = TSerie(mjd=mjd_tab, val=val_tab, pps=pps_tab)
             out_mts.add_TSerie(out_ts)
         self.append_mtserie(mts_name=mts_name_out, mts=out_mts, mjd_group='gnss_mjd')
+    
+    def create_comparator_file(self, filename, mts_names, formats, headers):
+        """
+        Creates a file with data of all MTseries in the GTserie.
+        """
+        with open(filename, 'w') as f:
+            f.write(f"# MJD")
+            for h in headers:
+                f.write(f"\t{h}")
+            f.write('\n')
+            
+            for i, mjd in enumerate(self.mts_dict[mts_names[0]].mjd_tab()):
+                f.write(f"{mjd:.6f}")
+
+                for j, mts_name in enumerate(mts_names):
+                    if mts_name in self.mts_dict:
+                        f.write(f"\t{self.mts_dict[mts_name].val_tab()[i]:{formats[j]}}")
+                    else:
+                        f.write("\tNone")
+
+                f.write('\n')
+        f.close()
 
 
 def import_data_to_df_rocit_oc(
