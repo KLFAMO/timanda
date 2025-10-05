@@ -19,14 +19,35 @@ mjd2s = 24*60*60
 s2mjd = 1./mjd2s
 
 class TSerie:
-    def __init__(self, label='', mjd=[], val=[], pps=None):
+    """
+    Time series class
+    TSerie is a set of (mjd, val) pairs represnted as continuous lists
+    Attributes:
+    label - label of the series
+    mjd_tab - numpy array of mjd values
+    val_tab - numpy array of values
+    pps_tab - numpy array of points per sample values, used when resampling
+    """
+
+    def __init__(
+            self, label: str = '', mjd: list[float] = None,
+            val: list[float] = None, pps: list[int] = None
+        ):
         self.label = label
-        self.mjd_tab = np.array(mjd)
-        self.val_tab = np.array(val)
+        self.mjd_tab = np.array(mjd or [])
+        self.val_tab = np.array(val or [])
+        mjd_len = len(self.mjd_tab)
+        if len(self.val_tab) != mjd_len:
+            raise ValueError("Length of mjd and val must be equal")
+
+        # points per sample, used when resampling
         if pps is None:
-            self.pps_tab = np.array([1]*len(mjd)) # points per sample, used when resampling
+            self.pps_tab = np.ones(len(self.mjd_tab), dtype=int)
         else:
+            if len(pps) != len(self.mjd_tab):
+                raise ValueError("Length of pps must be equal to the length of mjd and val")
             self.pps_tab = np.array(pps)
+
         self.len = len(self.mjd_tab)
         self.calc_tab()
 
