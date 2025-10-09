@@ -299,3 +299,29 @@ def test_rm_dc_with_single_value():
     ts = TSerie(mjd=[1.0], val=[10.0])
     ts.rm_dc()
     assert np.array_equal(ts.val_tab, [0.0]), "rm_dc should set the single value to 0.0"
+
+# rm_drift
+
+def test_rm_drift_with_linear_trend():
+    """Test rm_drift with a simple linear trend."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
+    ts.rm_drift()
+    assert np.allclose(ts.val_tab, [0.0, 0.0, 0.0]), "Drift was not removed correctly"
+
+def test_rm_drift_with_no_trend():
+    """Test rm_drift with no linear trend."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 10.0, 10.0])
+    ts.rm_drift()
+    assert np.allclose(ts.val_tab, [0.0, 0.0, 0.0]), "Drift removal should result in all zeros"
+
+def test_rm_drift_with_empty_series():
+    """Test rm_drift with an empty series."""
+    ts = TSerie(mjd=[], val=[])
+    ts.rm_drift()
+    assert len(ts.val_tab) == 0, "rm_drift should not modify an empty series"
+
+def test_rm_drift_with_single_point():
+    """Test rm_drift with a single data point."""
+    ts = TSerie(mjd=[1.0], val=[10.0])
+    ts.rm_drift()
+    assert np.allclose(ts.val_tab, [0.0]), "Drift removal for a single point should result in 0.0"

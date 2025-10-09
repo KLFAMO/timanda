@@ -233,14 +233,26 @@ class TSerie:
         self.val_tab = self.val_tab - self.mean()
 
     def rm_drift(self):
+        """
+        Removes the linear drift from val_tab.
+
+        This method fits a linear trend to the data in val_tab as a function of mjd_tab
+        and subtracts the fitted line from val_tab. If mjd_tab or val_tab are empty,
+        the method does nothing.
+
+        Returns:
+            None
+        """
+        if len(self.val_tab) == 0:
+            return  # Do nothing if data is empty
+
         try:
             fit = np.polyfit(self.mjd_tab, self.val_tab, 1)
-            self.val_tab = (
-                self.val_tab - (self.mjd_tab*fit[0]+fit[1])
-            )
-        except:  # TODO: add exception name here
-            pass
-            # print('rm drift problem')
+            self.val_tab = self.val_tab - (self.mjd_tab*fit[0]+fit[1])
+        except ValueError as e:
+            logging.error(f"ValueError in rm_drift: {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error in rm_drift: {e}")
 
     def split(self, min_gap_s=8):
         if self.len == 0:
