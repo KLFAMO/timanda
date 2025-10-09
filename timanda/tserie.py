@@ -25,6 +25,7 @@ class TSerie:
     mjd_tab - numpy array of mjd values
     val_tab - numpy array of values
     pps_tab - numpy array of points per sample values, used when resampling
+    s_tab - numpy array of seconds from the start of the series
     """
 
     def __init__(
@@ -103,7 +104,20 @@ class TSerie:
         self.val_tab = self.val_tab[not_nan_indexes]
         self.pps_tab = self.pps_tab[not_nan_indexes]
 
-    def calc_tab(self):  # if not empty
+    def calc_tab(self):
+        """
+        Calculates derived attributes of the series
+        
+        Derived attributes:
+        len - length of the series (number of points)
+        isempty - 1 if the series is empty, 0 otherwise
+        mjd_start - starting MJD of the series
+        mjd_stop - ending MJD of the series
+        mean - mean value of the series
+        s_tab - numpy array of seconds from the start of the series
+        len_mjd - length of the series in MJD
+        len_s - length of the series in seconds
+        """
         self.rm_nans()
         self.len = len(self.mjd_tab)
         if self.len > 0:
@@ -111,18 +125,17 @@ class TSerie:
             self.mjd_start = self.mjd_tab[0]
             self.mjd_stop = self.mjd_tab[-1]
             filtered = [x for x in self.val_tab if x is not None]
-            self.mean = np.mean(filtered)
+            self.mean_val = np.mean(filtered)
             # self.mean = np.mean(self.val_tab)
         else:
             self.isempty = 1
             self.mjd_start = 0
             self.mjd_stop = 0
-            self.mean = None
-        mjd_s = 24*60*60
-        self.s_tab = (self.mjd_tab - self.mjd_start)*mjd_s
-        self.t_type = 't_type'
+            self.mean_val = None
+        self.s_tab = (self.mjd_tab - self.mjd_start)*mjd2s
+        # self.t_type = 't_type'
         self.len_mjd = self.mjd_stop-self.mjd_start
-        self.len_s = self.len_mjd*mjd_s
+        self.len_s = self.len_mjd*mjd2s
 
     def len(self):
         return len(self.mjd_tab)
@@ -133,42 +146,62 @@ class TSerie:
                      val=self.val_tab)
         return out
 
-    def mean_use_pps(self, decimal=False, decimal_out=False):
-        if len(self.val_tab) > 0:
-            if decimal:
-                getcontext().prec = 21
-                d_pps_tab = [D(str(x)) for x in self.pps_tab]
-                d_val_tab = [D(str(x)) for x in self.val_tab]
-                d_pps_val_tab = [x*y for x, y in zip(d_pps_tab, d_val_tab)]
-                d_sum_points = sum(d_pps_tab)
-                d_mean = sum(d_pps_val_tab)/d_sum_points
-                if decimal_out:
-                    return d_mean, d_sum_points
-                else:
-                    return float(d_mean), int(d_sum_points)
-            else:
-                pps_val_tab = self.pps_tab*self.val_tab
-                sum_points = sum(pps_val_tab)
-                mean_out = sum(pps_val_tab)/float(sum_points)
-                return mean_out, int(sum_points)
-        else:
+    def mean(self, decimal=False, decimal_out=False, use_pps=False):
+        """
+        Returns mean value of the series
+
+        Params:
+            decimal (bool): if True, uses Decimal for calculations
+            decimal_out (bool): if True, returns Decimal, otherwise float
+            use_pps (bool): if True, uses pps_tab for weighted mean calculation
+        
+        Returns:
+            float | Decimal | None: The mean value of the series, or None if the series is empty.
+
+        Note:
+            Decimal calculations helps only partially, because input values are float.
+        """
+        if len(self.val_tab) == 0:  # TODO: check if self.len == 0  is ok
             return None
 
-    def mean(self, decimal=False, decimal_out=False, use_pps=False):
         if use_pps:
             return self.mean_use_pps(decimal=decimal, decimal_out=decimal_out)
-        if len(self.val_tab) > 0:
-            if decimal:
-                getcontext().prec = 21
-                darr = [D(x) for x in self.val_tab]
-                if decimal_out:
-                    return sum(darr)/len(darr)
-                else:
-                    return float(sum(darr)/len(darr))
-            else:
-                return np.mean(self.val_tab)
-        else:
+        
+        if decimal:
+            getcontext().prec = 21
+            darr = [D(x) for x in self.val_tab]
+            mean_value = sum(darr) / len(darr)
+            return mean_value if decimal_out else float(mean_value)
+            
+        return np.mean(self.val_tab)
+
+    
+    def mean_use_pps(self, decimal=False, decimal_out=False):
+        """
+        Returns mean value of the series using pps_tab for weighted mean calculation
+        Params:
+            decimal (bool): if True, uses Decimal for calculations
+            decimal_out (bool): if True, returns Decimal, otherwise float
+        """
+        if len(self.val_tab) == 0:
             return None
+        
+        if decimal:
+            getcontext().prec = 21
+            d_pps_tab = [D(str(x)) for x in self.pps_tab]
+            d_val_tab = [D(str(x)) for x in self.val_tab]
+            d_pps_val_tab = [x*y for x, y in zip(d_pps_tab, d_val_tab)]
+            d_sum_points = sum(d_pps_tab)
+            d_mean = sum(d_pps_val_tab)/d_sum_points
+            if decimal_out:
+                return d_mean, d_sum_points
+            else:
+                return float(d_mean), int(d_sum_points)
+        
+        pps_val_tab = self.pps_tab*self.val_tab
+        sum_points = np.sum(self.pps_tab)
+        mean_out = np.sum(pps_val_tab)/sum_points
+        return mean_out, int(sum_points)
         
     def max_val(self):
         return np.max(self.val_tab)

@@ -1,4 +1,5 @@
 from timanda.tserie import TSerie
+from decimal import Decimal as D
 import numpy as np
 
 def test_create_empty_tserie():
@@ -16,6 +17,7 @@ def test_create_tserie_with_data():
     assert np.array_equal(ts.mjd_tab, np.array(mjd))
     assert np.array_equal(ts.val_tab, np.array(val))
     assert np.array_equal(ts.pps_tab, np.ones(len(mjd), dtype=int))
+    assert np.array_equal(ts.s_tab, np.array([0.0, 86400.0, 172800.0]))
 
 def test_create_tserie_with_pps():
     mjd = [1.0, 2.0, 3.0]
@@ -143,7 +145,7 @@ def test_calc_tab_with_valid_data():
     assert ts.isempty is 0
     assert ts.mjd_start == 1.0
     assert ts.mjd_stop == 3.0
-    assert ts.mean == 20.0  # Average of [10.0, 20.0, 30.0]
+    assert ts.mean_val == 20.0  # Average of [10.0, 20.0, 30.0]
     assert np.array_equal(ts.s_tab, np.array([0.0, 86400.0, 172800.0]))
     assert ts.len_mjd == 2.0
     assert ts.len_s == 172800.0
@@ -157,7 +159,7 @@ def test_calc_tab_with_empty_data():
     assert ts.isempty is 1
     assert ts.mjd_start == 0
     assert ts.mjd_stop == 0
-    assert ts.mean is None
+    assert ts.mean_val is None
     assert len(ts.s_tab) == 0
     assert ts.len_mjd == 0
     assert ts.len_s == 0
@@ -174,7 +176,7 @@ def test_calc_tab_with_none_values():
     assert ts.isempty is 0
     assert ts.mjd_start == 1.0
     assert ts.mjd_stop == 3.0
-    assert ts.mean == 20.0  # Average of [10.0, 30.0], ignoring np.nan
+    assert ts.mean_val == 20.0  # Average of [10.0, 30.0], ignoring np.nan
     assert np.array_equal(ts.pps_tab, np.array([1, 1]))
     assert ts.len_mjd == 2.0
     assert ts.len_s == 172800.0
@@ -190,4 +192,52 @@ def test_calc_tab_with_all_none_values():
     assert ts.isempty is 1
     assert ts.mjd_start == 0
     assert ts.mjd_stop == 0
-    assert ts.mean == None
+    assert ts.mean_val == None
+
+def test_mean_empty_series():
+    """Test mean calculation for an empty series."""
+    ts = TSerie()
+    assert ts.mean() is None, "Mean of an empty series should be None"
+
+def test_mean_simple_series():
+    """Test mean calculation for a simple series."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
+    assert ts.mean() == 20.0, "Mean of [10.0, 20.0, 30.0] should be 20.0"
+
+def test_mean_with_decimal():
+    """Test mean calculation using Decimal for higher precision."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
+    result = ts.mean(decimal=True, decimal_out=True)
+    assert result == D("20.0"), "Mean with Decimal should be Decimal('20.0')"
+
+def test_mean_with_decimal_float_output():
+    """Test mean calculation using Decimal but returning float."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
+    result = ts.mean(decimal=True, decimal_out=False)
+    assert result == 20.0, "Mean with Decimal but float output should be 20.0"
+
+def test_mean_with_nan_values():
+    """Test mean calculation ignoring NaN values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, np.nan, 30.0])
+    ts.rm_nans()  # Remove NaN values
+    assert ts.mean() == 20.0, "Mean should ignore NaN values and be 20.0"
+
+def test_mean_with_weighted_pps():
+    """Test mean calculation using pps_tab for weighted mean."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0], pps=[1, 2, 3])
+    result, total_weight = ts.mean(use_pps=True)
+    assert result == 23.333333333333332, "Weighted mean should be 23.333333333333332"
+    assert total_weight == 6, "Total weight should be 6"
+
+def test_mean_with_long_decimal_numbers():
+    """Test mean calculation with long decimal numbers."""
+    ts = TSerie(
+        mjd=[1.0, 2.0, 3.0],
+        val=[999999999.0000009, 999999999.0000009, 999999999.0000009]
+    )
+    result = ts.mean(decimal=True, decimal_out=True)
+    assert result == D("999999999.000000953673"), "Mean should be Decimal('999999999.0000009')"
+    """
+    There is ...53673 at the end due to floating point precision issues which is present
+    even when using Decimal because the input values are floats (during object creation).
+    """
