@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyqtgraph as pg
 from decimal import Decimal as D
-# from decimal import getcontext
 import decimal as dec
 import allantools as al
 from timanda.timeperiod import TimePeriods, TimePeriod

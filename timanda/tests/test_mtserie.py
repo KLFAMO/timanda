@@ -34,3 +34,21 @@ def test_mtserie_with_txt_file(mocker):
     assert len(mts.dtab) == 1
     assert np.array_equal(mts.dtab[0].mjd_tab, np.array([1.000001, 1.000002, 1.000003, 1.000004]))
     assert np.array_equal(mts.dtab[0].val_tab, np.array([10.0, 20.0, 30.0, 40.0]))
+
+def test_rm_nans():
+    """Test the rm_nans method to ensure it removes NaN values correctly."""
+    mjd = [1.0, 2.0, 3.0, 4.0]
+    val = [10.0, np.nan, 30.0, np.nan]
+    pps = [1, 2, 3, 4]
+    
+    ts = TSerie(mjd=mjd, val=val, pps=pps)
+    ts.rm_nans()
+
+    # Expected results after removing NaN values
+    expected_mjd = np.array([1.0, 3.0])
+    expected_val = np.array([10.0, 30.0])
+    expected_pps = np.array([1, 3])
+
+    assert np.array_equal(ts.mjd_tab, expected_mjd), "MJD values do not match expected results"
+    assert np.array_equal(ts.val_tab, expected_val), "VAL values do not match expected results"
+    assert np.array_equal(ts.pps_tab, expected_pps), "PPS values do not match expected results"

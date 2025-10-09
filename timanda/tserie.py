@@ -1,6 +1,4 @@
 from astropy.time import Time
-from scipy.stats import linregress
-import decimal as dec  # TODO: remove after removing alphanorm
 from decimal import Decimal as D
 from decimal import getcontext
 import logging
@@ -34,8 +32,8 @@ class TSerie:
             val: list[float] = None, pps: list[int] = None
         ):
         self.label = label
-        self.mjd_tab = np.array(mjd or [])
-        self.val_tab = np.array(val or [])
+        self.mjd_tab = np.array(mjd, dtype=float) if mjd is not None else np.empty(0, dtype=float)
+        self.val_tab = np.array(val, dtype=float) if val is not None else np.empty(0, dtype=float)
         mjd_len = len(self.mjd_tab)
         if len(self.val_tab) != mjd_len:
             raise ValueError("Length of mjd and val must be equal")
@@ -53,78 +51,60 @@ class TSerie:
 
     def __str__(self):
         if len(self.mjd_tab) == 0:
-            s = '\tEmpty'
-        else:
-            self.calc_tab()
-            s = 'TSerie:\tlabel: %s\tlength: %d\tlen_mjd: %.6f\n' % (
-                self.label,
-                self.len,
-                self.len_mjd
-            )
-            if self.len <= 10:
-                for i in range(0, self.len):
-                    s = s+'\t%.6f\t%f\t%f\n' % (
-                        self.mjd_tab[i],
-                        self.val_tab[i],
-                        self.pps_tab[i],
-                    )
-            else:
-                for i in range(0, 5):
-                    s = s+'\t%.6f\t%f\t%f\n' % (
-                        self.mjd_tab[i],
-                        self.val_tab[i],
-                        self.pps_tab[i]
-                    )
-                s = s+'\t...\n'
-                for i in range(self.len-5, self.len):
-                    s = s+'\t%.6f\t%f\t%f\n' % (
-                        self.mjd_tab[i],
-                        self.val_tab[i],
-                        self.pps_tab[i],
-                    )
+            return '\tEmpty'
+        
+        self.calc_tab()
+        s = f'TSerie:\tlabel: {self.label}\tlength: {self.len}\tlen_mjd: {self.len_mjd:.6f}\n'
+        s += self._format_data()
         return s
+    
+    def _format_data(self):
+        if self.len <= 10:
+            return ''.join(
+                f'\t{self.mjd_tab[i]:.6f}\t{self.val_tab[i]:f}\t{self.pps_tab[i]:f}\n'
+                for i in range(self.len)
+            )
+        else:
+            first_part = ''.join(
+                f'\t{self.mjd_tab[i]:.6f}\t{self.val_tab[i]:f}\t{self.pps_tab[i]:f}\n'
+                for i in range(5)
+            )
+            last_part = ''.join(
+                f'\t{self.mjd_tab[i]:.6f}\t{self.val_tab[i]:f}\t{self.pps_tab[i]:f}\n'
+                for i in range(self.len - 5, self.len)
+            )
+            return first_part + '\t...\n' + last_part
+
+    def _apply_operation(self, b, operation):
+        if isinstance(b, (int, float)):
+            val = operation(self.val_tab, b)
+            return TSerie(val=val, mjd=self.mjd_tab)
+        elif isinstance(b, TSerie):
+            print(f'TSerie {operation.__name__} TSerie is not supported yet')
+            return None
+        else:
+            return None
 
     def __add__(self, b):
-        if isinstance(b, (int, float)):
-            val = self.val_tab + b
-            return TSerie(val=val, mjd=self.mjd_tab)
-        elif isinstance(b, (TSerie)):
-            print('Adding TSerie to TSerie is  not supported yet')
-            return None
-        else:
-            return None
+        return self._apply_operation(b, np.add)
 
     def __sub__(self, b):
-        if isinstance(b, (int, float)):
-            val = self.val_tab - b
-            return TSerie(val=val, mjd=self.mjd_tab)
-        elif isinstance(b, (TSerie)):
-            print(' TSerie - TSerie is  not supported yet')
-            return None
-        else:
-            return None
+        return self._apply_operation(b, np.subtract)
 
     def __mul__(self, b):
-        if isinstance(b, (int, float)):
-            val = self.val_tab * b
-            return TSerie(val=val, mjd=self.mjd_tab)
-        elif isinstance(b, (TSerie)):
-            print('TSerie * TSerie is  not supported yet')
-            return None
-        else:
-            return None
+        return self._apply_operation(b, np.multiply)
 
     def __truediv__(self, b):
-        if isinstance(b, (int, float)):
-            val = self.val_tab / b
-            return TSerie(val=val, mjd=self.mjd_tab)
-        elif isinstance(b, (TSerie)):
-            print('TSerie / TSerie is  not supported yet')
-            return None
-        else:
-            return None
+        return self._apply_operation(b, np.divide)
+    
+    def rm_nans(self):
+        not_nan_indexes = np.where(~np.isnan(self.val_tab))[0]
+        self.mjd_tab = self.mjd_tab[not_nan_indexes]
+        self.val_tab = self.val_tab[not_nan_indexes]
+        self.pps_tab = self.pps_tab[not_nan_indexes]
 
     def calc_tab(self):  # if not empty
+        self.rm_nans()
         self.len = len(self.mjd_tab)
         if self.len > 0:
             self.isempty = 0
@@ -132,10 +112,12 @@ class TSerie:
             self.mjd_stop = self.mjd_tab[-1]
             filtered = [x for x in self.val_tab if x is not None]
             self.mean = np.mean(filtered)
+            # self.mean = np.mean(self.val_tab)
         else:
             self.isempty = 1
             self.mjd_start = 0
             self.mjd_stop = 0
+            self.mean = None
         mjd_s = 24*60*60
         self.s_tab = (self.mjd_tab - self.mjd_start)*mjd_s
         self.t_type = 't_type'
