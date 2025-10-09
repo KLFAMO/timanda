@@ -8,6 +8,7 @@ import decimal as dec
 import allantools as al
 from timanda.timeperiod import TimePeriods, TimePeriod
 s2mjd = 1/(60*60*24)  # seconds to MJD conversion factor
+from timanda.tserie import mjd2s
 
 
 class MTSerie:
