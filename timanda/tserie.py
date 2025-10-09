@@ -204,7 +204,15 @@ class TSerie:
         return mean_out, int(sum_points)
         
     def max_val(self):
-        return np.max(self.val_tab)
+        """
+        Returns the maximum value in val_tab.
+
+        Returns:
+            float | None: The maximum value in val_tab, or None if val_tab is empty.
+        """
+        if len(self.val_tab) == 0:
+            return None  # Return None if the array is empty
+        return np.nanmax(self.val_tab)  # Use nanmax to ignore NaN values
 
     def rm_dc(self):
         self.val_tab = self.val_tab - self.mean

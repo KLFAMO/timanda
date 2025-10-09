@@ -241,3 +241,33 @@ def test_mean_with_long_decimal_numbers():
     There is ...53673 at the end due to floating point precision issues which is present
     even when using Decimal because the input values are floats (during object creation).
     """
+
+def test_max_val_with_normal_values():
+    """Test max_val with normal values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
+    assert ts.max_val() == 30.0, "Maximum value should be 30.0"
+
+def test_max_val_with_negative_values():
+    """Test max_val with negative values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[-10.0, -20.0, -5.0])
+    assert ts.max_val() == -5.0, "Maximum value should be -5.0"
+
+def test_max_val_with_nan_values():
+    """Test max_val with NaN values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, np.nan, 30.0])
+    assert ts.max_val() == 30.0, "Maximum value should ignore NaN and be 30.0"
+
+def test_max_val_with_empty_series():
+    """Test max_val with an empty series."""
+    ts = TSerie(mjd=[], val=[])
+    assert ts.max_val() is None, "Maximum value of an empty series should be None"
+
+def test_max_val_with_all_nan_values():
+    """Test max_val with all NaN values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[np.nan, np.nan, np.nan])
+    assert ts.max_val() is None, "Maximum value of an empty series should be None"
+
+def test_max_val_with_mixed_values():
+    """Test max_val with mixed positive, negative, and NaN values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0, 4.0], val=[-10.0, 20.0, np.nan, 15.0])
+    assert ts.max_val() == 20.0, "Maximum value should be 20.0, ignoring NaN"
