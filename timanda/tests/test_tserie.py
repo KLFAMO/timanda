@@ -242,6 +242,8 @@ def test_mean_with_long_decimal_numbers():
     even when using Decimal because the input values are floats (during object creation).
     """
 
+# max_val
+
 def test_max_val_with_normal_values():
     """Test max_val with normal values."""
     ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
@@ -271,3 +273,29 @@ def test_max_val_with_mixed_values():
     """Test max_val with mixed positive, negative, and NaN values."""
     ts = TSerie(mjd=[1.0, 2.0, 3.0, 4.0], val=[-10.0, 20.0, np.nan, 15.0])
     assert ts.max_val() == 20.0, "Maximum value should be 20.0, ignoring NaN"
+
+# rm_dc
+
+def test_rm_dc_with_normal_values():
+    """Test rm_dc with normal values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, 20.0, 30.0])
+    ts.rm_dc()
+    assert np.array_equal(ts.val_tab, [-10.0, 0.0, 10.0]), "DC component was not removed correctly"
+
+def test_rm_dc_with_nan_values():
+    """Test rm_dc with NaN values."""
+    ts = TSerie(mjd=[1.0, 2.0, 3.0], val=[10.0, np.nan, 30.0])
+    ts.rm_dc()
+    assert np.array_equal(ts.val_tab, [-10.0, 10.0], equal_nan=True), "DC component was not removed correctly with NaN values"
+
+def test_rm_dc_with_empty_series():
+    """Test rm_dc with an empty series."""
+    ts = TSerie(mjd=[], val=[])
+    ts.rm_dc()
+    assert len(ts.val_tab) == 0, "rm_dc should not modify an empty series"
+
+def test_rm_dc_with_single_value():
+    """Test rm_dc with a single value."""
+    ts = TSerie(mjd=[1.0], val=[10.0])
+    ts.rm_dc()
+    assert np.array_equal(ts.val_tab, [0.0]), "rm_dc should set the single value to 0.0"

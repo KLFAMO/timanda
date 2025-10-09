@@ -215,7 +215,22 @@ class TSerie:
         return np.nanmax(self.val_tab)  # Use nanmax to ignore NaN values
 
     def rm_dc(self):
-        self.val_tab = self.val_tab - self.mean
+        """
+        Removes the DC (mean) component from val_tab.
+
+        This method subtracts the mean value of val_tab from each element in val_tab.
+        If val_tab is empty, the method does nothing.
+
+        Note:
+            NaN values in val_tab are ignored when calculating the mean.
+
+        Returns:
+            None
+        """
+        if len(self.val_tab) == 0:
+            return  # Do nothing if val_tab is empty
+        
+        self.val_tab = self.val_tab - self.mean()
 
     def rm_drift(self):
         try:
