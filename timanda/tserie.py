@@ -255,6 +255,18 @@ class TSerie:
             logging.error(f"Unexpected error in rm_drift: {e}")
 
     def split(self, min_gap_s=8):
+        """
+        Splits the time series into segments based on gaps in time.
+
+        This method identifies gaps in `s_tab` larger than `min_gap_s` seconds
+        and splits the time series into multiple `TSerie` objects.
+
+        Args:
+            min_gap_s (float): Minimum gap in seconds to split the series.
+
+        Returns:
+            list[TSerie]: A list of `TSerie` objects representing the split segments.
+        """
         if self.len == 0:
             return []
         out_tab = []
