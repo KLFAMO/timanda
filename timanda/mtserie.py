@@ -243,9 +243,9 @@ class MTSerie:
         if show == 1:
             plt.show()
 
-    def hist(self, bins=10):
+    def hist(self, bins=10, orientation='vertical'):
         v = self.val_tab()
-        plt.hist(v, bins=bins)
+        plt.hist(v, bins=bins, orientation=orientation)
 
     def plot_pqg_widget(self, minusmjd=0, widget=None):
         if widget is None:
