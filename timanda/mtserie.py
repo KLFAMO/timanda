@@ -226,16 +226,21 @@ class MTSerie:
             print(f"Unexpected error during reading file '{file_name}': {e}")
 
     def plot(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
-             nolabels=False):
+             nolabels=False, time_unit='mjd'):
         for x in self.dtab:
+            if time_unit == 'mjd':
+                xs = x.mjd_tab
+            elif time_unit == 's':
+                xs = (x.mjd_tab - x.mjd_tab[0]) * 24 * 60 * 60
+                
             if color == '':
                 color = self.color
             if ax is None:
-                plt.plot(x.mjd_tab, x.val_tab-self.plot_ref_val,
+                plt.plot(xs, x.val_tab-self.plot_ref_val,
                           color=color, marker=marker,
                          linestyle=linestyle, zorder=zorder)
             else:
-                ax.plot(x.mjd_tab, x.val_tab-self.plot_ref_val,
+                ax.plot(xs, x.val_tab-self.plot_ref_val,
                         color=color, marker=marker,
                         linestyle=linestyle, zorder=zorder)
             if not nolabels:

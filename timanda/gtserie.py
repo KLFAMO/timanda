@@ -93,12 +93,13 @@ class GTserie:
     def plot_mts(self, mts_name):
         self.mts_dict[mts_name].plot()
 
-    def plot(self, fig=None, axs=None, figsize=(7, 7), mts_names=None, show=1, zorder=1):
+    def plot(self, fig=None, axs=None, figsize=(7, 7), mts_names=None, show=1, zorder=1,
+             time_unit='mjd'):
         if not mts_names:
             mts_names = self.mts_dict
         fig, axs = plt.subplots(len(mts_names),1,  constrained_layout=True, sharex=True, figsize=figsize)
         for i, mts_name in enumerate(mts_names):
-            self.mts_dict[mts_name].plot(ax=axs[i], show=0, zorder=zorder)
+            self.mts_dict[mts_name].plot(ax=axs[i], show=0, zorder=zorder, time_unit=time_unit)
             axs[i].grid(True)
             if self.mts_dict[mts_name].plot_label == '':
                 self.mts_dict[mts_name].plot_label = mts_name
