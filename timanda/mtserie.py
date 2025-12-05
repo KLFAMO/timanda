@@ -552,6 +552,112 @@ class MTSerie:
         
         return self.dtab[-1].last_mjd()
         
+
+    def resample2(self, *args, **kwargs):
+        """Backward-compatible alias for align_to_grid_zoh()."""
+        return self.align_to_grid_zoh(*args, **kwargs)
+
+    def align_to_grid_zoh(
+            self,
+            period_s: float | int = 1,
+            sh_s: float | int = 0.05,
+            tol_s: float | int = 7,
+            start_mjd: float = None,
+            stop_mjd: float = None
+        ):
+        """
+        Resample / align the time series to a regular time grid using a
+        zero-order hold (nearest-past-sample) strategy.
+
+        For each grid point t_n on the new time grid:
+
+        1. All original samples with timestamps <= t_n + sh_s are consumed
+        (in chronological order), and the most recent of them becomes the
+        "last known value".
+        2. If a last known value exists, it is used for this grid point
+        (zero-order hold).
+        3. If no last known value exists yet (we are still before the first
+        original sample), but the first future sample is closer than
+        tol_s seconds to t_n, this future sample is used instead.
+        4. Otherwise, the grid point is marked as missing in `rm_mask`
+        and its value in `nv` is set to 0.0.
+
+        This algorithm runs in O(N + M) time, where N is the number of
+        original samples and M is the number of points on the new grid.
+
+        Parameters
+        ----------
+        period_s : float or int, optional
+            Sampling period of the target time grid in seconds.
+        sh_s : float or int, optional
+            Time shift (in seconds) applied to the grid when deciding which
+            original samples belong to a given grid point.
+            Useful, for example, when a counter nominally produces data at
+            integer seconds, but the actual readings arrive a few milliseconds
+            later.
+        tol_s : float or int, optional
+            Tolerance window (in seconds) for matching a grid point with the
+            first future original sample when no past sample is available yet.
+        start_mjd : float, optional
+            Start time of the target grid in MJD. If None, it is computed
+            from the first MJD of the series and aligned to the grid period.
+        stop_mjd : float, optional
+            Stop time of the target grid in MJD. If None, it is computed
+            from the last MJD of the series and aligned to the grid period.
+
+        Returns
+        -------
+        nmts : MTSerie
+            Resampled time series (single TSerie inside MTSerie) defined
+            on the regular time grid.
+        rm_mask : np.ndarray of bool
+            Boolean mask of shape (len(grid),) which is True for grid points
+            that could not be matched to any original sample within tol_s
+            (only applicable before the first valid sample).
+        """
+
+        tol_mjd = tol_s*s2mjd
+        sh_mjd = sh_s*s2mjd
+        first_mjd = self.first_mjd()
+        first_mjd_int = np.floor(first_mjd)
+        last_mjd = self.last_mjd()
+        last_mjd_int = np.floor(last_mjd)
+        period_mjd = period_s*s2mjd
+        # find the last grid point before the first MJD
+        if start_mjd is None:
+            start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
+        # find the first grid point after the last MJD
+        if stop_mjd is None:
+            stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
+        nm = np.arange(start_mjd, stop_mjd, period_mjd)
+        nv = np.zeros_like(nm, dtype=float)
+        rm_mask = np.zeros_like(nm, dtype=bool)
+        ov = self.val_tab()
+        om = self.mjd_tab()
+
+        # main iterations for all mts
+        oi = 0
+        v = None
+        for ni in range(len(nm)):
+            dif = 1
+            while (oi < len(om)-1 and om[oi] < nm[ni] + sh_mjd):
+                dif = nm[ni]-om[oi]
+                v = ov[oi]
+                oi = oi+1
+            if v is not None:
+                nv[ni] = v
+            else:
+                if om[oi] - nm[ni] < tol_mjd:
+                    nv[ni] = ov[oi]
+                else:
+                    nv[ni] = 0
+                    rm_mask[ni] = True
+        nts = TSerie(mjd=nm, val=nv)
+        nmts = MTSerie()
+        nmts.add_TSerie(nts)
+        return nmts, rm_mask
+
+    
     def resample(
             self,
             fun: str = 'mean',
@@ -597,79 +703,7 @@ class MTSerie:
             points_ratio=points_ratio,
             get_empty_mjd_ranges=get_empty_mjd_ranges
         )
-
-    def resample2(
-            self, period_s: float | int = 1,
-            sh_s: float | int = 0.05,
-            tol_s: float | int = 7,
-            start_mjd: float = None,
-            stop_mjd: float = None
-        ):
-        """
-        Resamples the time series to a given period in seconds.
-        Based on loop in numpy array.
-        Should be faster than resample().
-
-        Args:
-            period_s: float | int
-                sampling period in seconds
-            sh_s: float | int
-                shift in seconds, used for instance in case where counter receives data exactly at integer seconds
-                but data comes few ms later - it is possible to shift a little this grid to capture the redout
-                as in previous second nod current second
-            tol_s: float | int
-                tolerance in seconds
-            start_mjd: float
-                start time of grid in MJD, if None - it is calculated from the first MJD
-            stop_mjd: float
-                stop time of grid in MJD, if None - it is calculated from the last MJD
-        """
-
-        tol_mjd = tol_s*s2mjd
-        sh_mjd = sh_s*s2mjd
-        first_mjd = self.first_mjd()
-        first_mjd_int = np.floor(first_mjd)
-        last_mjd = self.last_mjd()
-        last_mjd_int = np.floor(last_mjd)
-        period_mjd = period_s*s2mjd
-        # find the last grid point before the first MJD
-        if start_mjd is None:
-            start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
-        # find the first grid point after the last MJD
-        if stop_mjd is None:
-            stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
-        nm = np.arange(start_mjd, stop_mjd, period_mjd)
-        nv = np.zeros_like(nm, dtype=float)
-        rm_mask = np.zeros_like(nm, dtype=bool)
-        ov = self.val_tab()
-        om = self.mjd_tab()
-        print(nm[0], nm[-1])
-
-        # main iterations for all mts
-        oi = 0
-        v = None
-        for ni in range(len(nm)):
-            # print(ni)
-            dif = 1
-            
-            while (om[oi] < nm[ni]+sh_mjd and oi < len(om)-1):
-                dif = nm[ni]-om[oi]
-                # print(f'dif: {dif}')
-                v = ov[oi]
-                oi = oi+1
-            if v:
-                nv[ni] = v
-            else:
-                if om[oi] - nm[ni] < tol_mjd:
-                    nv[ni] = ov[oi]
-                else:
-                    nv[ni] = 0
-                    rm_mask[ni] = True
-            # print(f"nm: {nm[ni]}, om: {om[oi]}, dif: {dif}")
-        nts = TSerie(mjd=nm, val=nv)
-        nmts = MTSerie()
-        nmts.add_TSerie(nts)
-        return nmts, rm_mask
+      
             
     def resample_to_mjd_array(
         self,
