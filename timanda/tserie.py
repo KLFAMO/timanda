@@ -303,24 +303,33 @@ class TSerie:
         out: index of the nearest mjd <= input_mjd
              None if mjd is out of table
         """
-        self.__str__()
+        # self.__str__() # removed for speedup, but not sure if not necessary
         if mjd < self.mjd_start or mjd > self.mjd_stop:
+            setattr(self, "_last_mjd_index", None)
             return None
-        if init_index is None:
-            if self.len_mjd == 0:
-                return None
-            N = int((self.len/self.len_mjd)*(mjd-self.mjd_start))
-        else:
+
+        if init_index is not None:
             N = init_index
+        else:
+            # try to use last cached index
+            cached = getattr(self, "_last_mjd_index", None)
+            if cached is not None:
+                N = cached
+            else:
+                if self.len_mjd == 0:
+                    return None
+                N = int((self.len / self.len_mjd) * (mjd - self.mjd_start))
+        
         if N < 0:
             N = 0
         if N >= self.len:
             N = self.len-1
-        while 1:
+        while True:
             if self.mjd_tab[N] > mjd:
                 N = N-1
             else:
                 if N+1 >= self.len or self.mjd_tab[N+1] > mjd:
+                    setattr(self, "_last_mjd_index", N)
                     return N
                 else:
                     N = N+1
@@ -328,15 +337,15 @@ class TSerie:
     def mjd2val(self, mjd, init_index=None):
         return self.val_tab[self.mjd2index(mjd, init_index=init_index)]
 
-    def getrange(self, fmjd, tmjd):
+    def getrange(self, fmjd, tmjd, fmjd_init=None, tmjd_init=None):
         if (fmjd > self.mjd_stop or tmjd < self.mjd_start):
             return None
         if fmjd < self.mjd_start:
             fmjd = self.mjd_start
         if tmjd > self.mjd_stop:
             tmjd = self.mjd_stop
-        fN = self.mjd2index(fmjd)
-        tN = self.mjd2index(tmjd)
+        fN = self.mjd2index(fmjd, init_index=fmjd_init)
+        tN = self.mjd2index(tmjd, init_index=tmjd_init)
         if tN is None:
             return None
         s = TSerie(
@@ -579,7 +588,7 @@ class TSerie:
 
     def high_gauss_filter(self, stddev=50, rm_dc=True):
         if not rm_dc:
-            dc = self.mean
+            dc = self.mean()
         g = Gaussian1DKernel(stddev=stddev)
         tmp = convolve(self.val_tab, g)
         self.val_tab = self.val_tab - tmp
@@ -590,7 +599,7 @@ class TSerie:
 
     def toMTSerie(self):
         from timanda.mtserie import MTSerie
-        return MTSerie(TSerie=self)
+        return MTSerie(tseries=[self])
     
     def first_mjd(self):
         return self.mjd_tab[0]

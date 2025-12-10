@@ -335,12 +335,12 @@ class MTSerie:
                 return num-1
         return len(self.dtab)-1
 
-    def mjd2tabNoandindex(self, mjd):
+    def mjd2tabNoandindex(self, mjd, init_index=None):
         tabNo = self.mjd2tabNo(mjd)
         if tabNo == -1:
             index = None
         else:
-            index = self.dtab[tabNo].mjd2index(mjd)
+            index = self.dtab[tabNo].mjd2index(mjd, init_index=init_index)
         return (tabNo, index)
 
     def mjd2val(self, mjd, mode=0):
@@ -358,6 +358,17 @@ class MTSerie:
                 return self.dtab[t].val_tab[i]
 
     def getrange(self, from_mjd, to_mjd):
+        """
+        Gets a range of MTSerie between from_mjd and to_mjd
+        Args:
+            from_mjd: float
+                starting MJD
+            to_mjd: float
+                ending MJD
+        Returns:
+            MTSerie
+                MTSerie object with data in the given range
+        """
         ft, fN = self.mjd2tabNoandindex(from_mjd)
         tt, tN = self.mjd2tabNoandindex(to_mjd)
         if fN is not None:
@@ -371,7 +382,10 @@ class MTSerie:
             tt = 0
 
         for tab in self.dtab[ft:tt+1]:
-            tmp = tab.getrange(from_mjd, to_mjd)
+            tmp = tab.getrange(
+                from_mjd,
+                to_mjd,
+            )
             if tmp is not None:
                 out.add_TSerie(tmp)
         if len(out.dtab) == 0:
@@ -450,7 +464,7 @@ class MTSerie:
         totlen = 0
         for x in self.dtab:
             if len(x.mjd_tab)>0:
-                tab.append([x.mean, x.len])
+                tab.append([x.mean(), x.len])
                 totlen = totlen+x.len
         out = 0
         for x in tab:
@@ -662,7 +676,6 @@ class MTSerie:
             self,
             fun: str = 'mean',
             period_s: float | int = 60,
-            start_mjd: float = None, # not implemented yet
             points_ratio: float = 0.7,
             get_empty_mjd_ranges: bool = False
         ):
@@ -677,8 +690,6 @@ class MTSerie:
                 'slope_s' - 
             period_s: float | int
                 period in seconds
-            start_mjd: float
-                start time of grid in MJD, probably not implemented yet
             points_ratio: float
                 
         """
@@ -703,8 +714,8 @@ class MTSerie:
             points_ratio=points_ratio,
             get_empty_mjd_ranges=get_empty_mjd_ranges
         )
-      
-            
+
+
     def resample_to_mjd_array(
         self,
         mjd_grid,
@@ -744,24 +755,27 @@ class MTSerie:
         for i in range(0, len(mjd_grid)-1):
             mjd = mjd_grid[i]
             sub_mts = self.getrange(mjd_grid[i], mjd_grid[i+1])
+            if sub_mts:
+                sub_mean = sub_mts.mean()
+            else:
+                sub_mean = None
             if (
-                sub_mts and 
                 # sub_mts.get_number_of_points() > expected_number_of_points*points_ratio and
-                sub_mts.mean() is not None
+                sub_mean is not None
             ):
                 if fun=='mean':
-                    calc = sub_mts.mean()
+                    calc = sub_mean
                 if fun=='slope':
                     calc = sub_mts.slope()
                 if fun=='slope_s':
                     calc = sub_mts.slope_s()
-                if calc:
+                if calc is not None:
                     ts.append(
                         mjd=mjd,
                         val=calc,
                         pps=sub_mts.get_number_of_points()
                     )
-                    ts.calc_tab()
+                    # ts.calc_tab()
                 else:
                     ts.append(
                         mjd=mjd,
@@ -774,11 +788,13 @@ class MTSerie:
                         mjd=mjd,
                         val=none_val,
                     )
-                    ts.calc_tab()
+                    # ts.calc_tab()
                 else:
                     if get_empty_mjd_ranges:
                         empty_mjd_ranges.append((mjd_grid[i], mjd_grid[i+1]))
-        out_mts = MTSerie(TSerie=ts)
+
+        ts.calc_tab()
+        out_mts = MTSerie(tseries=[ts])
         out_mts.split(min_gap_s=grid_period_s*1.5)
         # out_mts.rmemptyseries()
         if get_empty_mjd_ranges:
