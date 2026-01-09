@@ -170,19 +170,52 @@ class GTserie:
 
     def resample(self, fun='mean', period_s=60, start_mjd=None, points_ratio=0.1):
         """
-        Resamples all time MTseries to a given period in seconds.
+        Resample all MTSerie objects in this GTserie onto a regular time grid
+        using each MTSerie.resample(...).
 
-        Args:
-            fun: str
-                function to calculate the value of the resampled point
-                'mean' - mean value
-                'slope' - slope
-                'slope_s' -
-            period_s: float | int
-                period in seconds
-            start_mjd: float
-                start time in MJD for resampling
-            points_ratio: float
+        This method delegates the actual resampling to each MTSerie and then
+        performs a consistency cleanup across all series by removing time ranges
+        where the resampling produced "empty" output (gaps with insufficient data).
+
+        Parameters
+        ----------
+        fun : str, default 'mean'
+            Aggregation function used to compute resampled values inside each grid bin.
+            The exact set of supported functions depends on MTSerie.resample(...).
+            Typical examples:
+            - 'mean'  : average value in the bin
+            - 'slope' : slope estimated in the bin (if supported by MTSerie)
+        period_s : float | int, default 60
+            Resampling period in seconds. Defines the target grid spacing.
+        start_mjd : float | None, default None
+            Optional starting epoch (MJD) for the resampling grid. If None, the
+            MTSerie implementation selects an appropriate start (typically derived
+            from the first available sample).
+        points_ratio : float, default 0.1
+            Minimum fraction (or threshold) of points required in a bin to consider
+            it valid (exact interpretation depends on MTSerie.resample).
+
+        Behavior / Side Effects
+        -----------------------
+        - For each MTSerie in self.mts_dict:
+            1) Replace it with its resampled version returned by MTSerie.resample(...).
+            2) Retrieve empty MJD ranges (gaps) detected during resampling.
+        - For each empty MJD range returned by any series:
+            remove that time range from ALL series in the GTserie via self.rm_range(...).
+        This enforces alignment across series by ensuring that no series retains
+        data in periods where another series had insufficient coverage after resampling.
+
+        Returns
+        -------
+        None
+            The operation is performed in-place: self.mts_dict is modified.
+
+        Notes
+        -----
+        This function is a "high-level" resampling pipeline:
+        - It relies on MTSerie.resample(...) to compute the resampled data.
+        - It additionally enforces cross-series consistency by removing empty ranges
+        from every series, not only the one that detected the gap.
         """
 
         for a in self.mts_dict:
@@ -249,6 +282,64 @@ class GTserie:
             return g     
 
     def resample2(self, period_s):
+        """
+        Experimental / work-in-progress resampling implementation based on explicit
+        grid construction in MJD and manual bin iteration.
+
+        This method attempts to:
+        1) Compute a global regular MJD grid with spacing period_s seconds.
+        2) Prepare per-series numpy arrays for output values.
+        3) Iterate over consecutive grid intervals and compute resampled values.
+
+        Parameters
+        ----------
+        period_s : float | int
+            Resampling period in seconds used to define the grid spacing.
+
+        Intended Algorithm (as implemented so far)
+        ------------------------------------------
+        - Convert seconds to days (MJD fractional days) using s2mjd = 1/(24*60*60).
+        - Determine:
+            first_mjd = earliest timestamp across all series
+            last_mjd  = latest timestamp across all series
+        and split them into integer day part + fractional part.
+        - Compute:
+            period_mjd = period_s * s2mjd
+        - Create a grid [start_mjd, ..., stop_mjd] such that:
+            start_mjd aligns to the last grid point <= first_mjd
+            stop_mjd  aligns to the first grid point >= last_mjd
+        then build nm = np.arange(start_mjd, stop_mjd, period_mjd).
+
+        Current Status / Limitations
+        ----------------------------
+        - The function is incomplete: the main computation loop is not implemented.
+        - There are apparent bugs/typos in the current code (e.g. use of an undefined
+        variable 's', incorrect numpy zeros argument 'type' instead of 'dtype', and
+        duplicate assignments for ov/om).
+        - No value aggregation rule is defined yet (mean/slope/etc.), unlike resample().
+
+        Returns
+        -------
+        None (currently)
+            As written, the function does not return a resampled dataset yet.
+
+        Key Differences vs resample()
+        -----------------------------
+        resample():
+        - Production-oriented: delegates resampling to MTSerie.resample(...)
+        - Removes empty MJD ranges globally across all series to keep alignment
+        - Supports configurable aggregation via 'fun', and grid control via start_mjd
+        - Operates in-place and fully executes end-to-end
+
+        resample2():
+        - Low-level, manual approach: constructs the grid and intends to iterate bins
+        - Not finished and currently not equivalent in functionality
+        - No cross-series cleanup strategy is applied yet
+        - Intended as an alternative implementation (potentially faster or more
+            controllable), but currently not usable as a drop-in replacement
+        """
+
+
         first_mjd = self.first_mjd()
         first_mjd_int = np.floor(first_mjd)
         last_mjd = self.last_mjd()
