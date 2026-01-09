@@ -684,7 +684,8 @@ class MTSerie:
                 if v is not None:
                     nv[ni] = v
                 else:
-                    if om[oi] - nm[ni] < tol_mjd:
+                    dt = om[oi] - nm[ni]
+                    if 0 <= dt < tol_mjd:
                         nv[ni] = ov[oi]
                     else:
                         nv[ni] = 0
@@ -697,7 +698,8 @@ class MTSerie:
                 else:
                     # Optional: allow "first future sample within tol" for early start
                     # (only if you want it in no-hold mode as well).
-                    if v is None and oi < len(om) and (om[oi] - nm[ni]) < tol_mjd:
+                    dt = om[oi] - nm[ni]
+                    if v is None and oi < len(om) and 0 <= dt < tol_mjd:
                         nv[ni] = ov[oi]
                         # Consume it to avoid reusing the same sample on multiple grid points
                         if oi < len(om)-1:
