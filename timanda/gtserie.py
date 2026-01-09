@@ -279,92 +279,171 @@ class GTserie:
             )
             # g.rm_value('nmij_frac_freq', none_val)
         if new_gts:
-            return g     
+            return g
 
-    def resample2(self, period_s):
+
+    def align_all_to_grid_zoh_and_drop_missing(
+        self,
+        period_s: float | int = 1,
+        sh_s: float | int = 0.05,
+        snap_s: float | int = 0.0,
+        tol_s: float | int = 7,
+        start_mjd: float | None = None,
+        stop_mjd: float | None = None,
+        new_gts: bool = True,
+        out_name: str = "aligned_common",
+    ):
         """
-        Experimental / work-in-progress resampling implementation based on explicit
-        grid construction in MJD and manual bin iteration.
+        Align all MTSerie objects to the same regular grid using align_to_grid_zoh()
+        and remove grid points that are missing in at least one series.
 
-        This method attempts to:
-        1) Compute a global regular MJD grid with spacing period_s seconds.
-        2) Prepare per-series numpy arrays for output values.
-        3) Iterate over consecutive grid intervals and compute resampled values.
+        The procedure is:
+        1) Resample each series to the same grid (period_s, start_mjd, stop_mjd).
+        2) Combine rm_mask from all series using logical OR.
+           A grid point is removed if it is missing in any series.
+        3) Remove these points from all series.
 
         Parameters
         ----------
-        period_s : float | int
-            Resampling period in seconds used to define the grid spacing.
-
-        Intended Algorithm (as implemented so far)
-        ------------------------------------------
-        - Convert seconds to days (MJD fractional days) using s2mjd = 1/(24*60*60).
-        - Determine:
-            first_mjd = earliest timestamp across all series
-            last_mjd  = latest timestamp across all series
-        and split them into integer day part + fractional part.
-        - Compute:
-            period_mjd = period_s * s2mjd
-        - Create a grid [start_mjd, ..., stop_mjd] such that:
-            start_mjd aligns to the last grid point <= first_mjd
-            stop_mjd  aligns to the first grid point >= last_mjd
-        then build nm = np.arange(start_mjd, stop_mjd, period_mjd).
-
-        Current Status / Limitations
-        ----------------------------
-        - The function is incomplete: the main computation loop is not implemented.
-        - There are apparent bugs/typos in the current code (e.g. use of an undefined
-        variable 's', incorrect numpy zeros argument 'type' instead of 'dtype', and
-        duplicate assignments for ov/om).
-        - No value aggregation rule is defined yet (mean/slope/etc.), unlike resample().
+        period_s, sh_s, snap_s, tol_s, start_mjd, stop_mjd
+            Passed identically to MTSerie.align_to_grid_zoh() for every series.
+        new_gts : bool
+            If True, return a new GTserie containing aligned and trimmed series.
+            If False, modify this GTserie in place and return self.
+        out_name : str
+            Name of the returned GTserie when new_gts=True.
 
         Returns
         -------
-        None (currently)
-            As written, the function does not return a resampled dataset yet.
-
-        Key Differences vs resample()
-        -----------------------------
-        resample():
-        - Production-oriented: delegates resampling to MTSerie.resample(...)
-        - Removes empty MJD ranges globally across all series to keep alignment
-        - Supports configurable aggregation via 'fun', and grid control via start_mjd
-        - Operates in-place and fully executes end-to-end
-
-        resample2():
-        - Low-level, manual approach: constructs the grid and intends to iterate bins
-        - Not finished and currently not equivalent in functionality
-        - No cross-series cleanup strategy is applied yet
-        - Intended as an alternative implementation (potentially faster or more
-            controllable), but currently not usable as a drop-in replacement
+        g : GTserie
+            The aligned GTserie (new object if new_gts=True, otherwise self).
+        common_rm_mask : np.ndarray of bool
+            Boolean mask of removed grid points (True = removed).
         """
 
+        # Create output container if requested
+        if new_gts:
+            g = GTserie(name=out_name)
+        else:
+            g = self
 
-        first_mjd = self.first_mjd()
-        first_mjd_int = np.floor(first_mjd)
-        last_mjd = self.last_mjd()
-        last_mjd_int = np.floor(last_mjd)
-        period_mjd = period_s*s2mjd
-        # find the last grid point before the first MJD
-        start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
-        # find the first grid point after the last MJD
-        stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
-        nm = np.arange(start_mjd, stop_mjd+1e-7, period_mjd)
+        common_rm_mask = None
 
-        # prepare np.arrays for all mts
-        nv = dict()
-        ov = dict()
-        om = dict()
-        for mtn in self.mts_dict:
-            nv[mtn] = np.zeros(len(s), type=float)
-            ov[mtn] = self.mts_dict[mtn].mjd_val()
-            om[mtn] = self.mts_dict[mtn].mjd_val()
+        # First pass: align each series and build the common removal mask
+        for mts_name in self.mts_dict:
+            mts = self.mts_dict[mts_name]
 
-        # main iterations for all mts
-        for ni in range(len(nm)-1):
-            nmjd = nm[ni]
-            for mts_name in self.mts_dict:
-                print(ni)
+            tmp, rm_mask = mts.align_to_grid_zoh(
+                period_s=period_s,
+                sh_s=sh_s,
+                snap_s=snap_s,
+                tol_s=tol_s,
+                start_mjd=start_mjd,
+                stop_mjd=stop_mjd,
+            )
+
+            # Combine masks (logical OR): remove if missing in ANY series
+            common_rm_mask = (common_rm_mask | rm_mask) if common_rm_mask is not None else rm_mask.copy()
+
+            # Store aligned series
+            if new_gts:
+                # Preserve mjd_group if available; otherwise use empty string
+                mjd_group = self.mjd_groups.get(mts_name, "")
+                g.append_mtserie(mts_name=mts_name, mts=tmp, mjd_group=mjd_group)
+            else:
+                g.mts_dict[mts_name] = tmp
+
+        # Second pass: remove common missing points from all series
+        for mts_name in g.mts_dict:
+            g.mts_dict[mts_name].rm_indexes([common_rm_mask])
+
+        return g, common_rm_mask
+
+
+    # def resample2(self, period_s):
+    #     """
+    #     Experimental / work-in-progress resampling implementation based on explicit
+    #     grid construction in MJD and manual bin iteration.
+
+    #     This method attempts to:
+    #     1) Compute a global regular MJD grid with spacing period_s seconds.
+    #     2) Prepare per-series numpy arrays for output values.
+    #     3) Iterate over consecutive grid intervals and compute resampled values.
+
+    #     Parameters
+    #     ----------
+    #     period_s : float | int
+    #         Resampling period in seconds used to define the grid spacing.
+
+    #     Intended Algorithm (as implemented so far)
+    #     ------------------------------------------
+    #     - Convert seconds to days (MJD fractional days) using s2mjd = 1/(24*60*60).
+    #     - Determine:
+    #         first_mjd = earliest timestamp across all series
+    #         last_mjd  = latest timestamp across all series
+    #     and split them into integer day part + fractional part.
+    #     - Compute:
+    #         period_mjd = period_s * s2mjd
+    #     - Create a grid [start_mjd, ..., stop_mjd] such that:
+    #         start_mjd aligns to the last grid point <= first_mjd
+    #         stop_mjd  aligns to the first grid point >= last_mjd
+    #     then build nm = np.arange(start_mjd, stop_mjd, period_mjd).
+
+    #     Current Status / Limitations
+    #     ----------------------------
+    #     - The function is incomplete: the main computation loop is not implemented.
+    #     - There are apparent bugs/typos in the current code (e.g. use of an undefined
+    #     variable 's', incorrect numpy zeros argument 'type' instead of 'dtype', and
+    #     duplicate assignments for ov/om).
+    #     - No value aggregation rule is defined yet (mean/slope/etc.), unlike resample().
+
+    #     Returns
+    #     -------
+    #     None (currently)
+    #         As written, the function does not return a resampled dataset yet.
+
+    #     Key Differences vs resample()
+    #     -----------------------------
+    #     resample():
+    #     - Production-oriented: delegates resampling to MTSerie.resample(...)
+    #     - Removes empty MJD ranges globally across all series to keep alignment
+    #     - Supports configurable aggregation via 'fun', and grid control via start_mjd
+    #     - Operates in-place and fully executes end-to-end
+
+    #     resample2():
+    #     - Low-level, manual approach: constructs the grid and intends to iterate bins
+    #     - Not finished and currently not equivalent in functionality
+    #     - No cross-series cleanup strategy is applied yet
+    #     - Intended as an alternative implementation (potentially faster or more
+    #         controllable), but currently not usable as a drop-in replacement
+    #     """
+
+
+    #     first_mjd = self.first_mjd()
+    #     first_mjd_int = np.floor(first_mjd)
+    #     last_mjd = self.last_mjd()
+    #     last_mjd_int = np.floor(last_mjd)
+    #     period_mjd = period_s*s2mjd
+    #     # find the last grid point before the first MJD
+    #     start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
+    #     # find the first grid point after the last MJD
+    #     stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
+    #     nm = np.arange(start_mjd, stop_mjd+1e-7, period_mjd)
+
+    #     # prepare np.arrays for all mts
+    #     nv = dict()
+    #     ov = dict()
+    #     om = dict()
+    #     for mtn in self.mts_dict:
+    #         nv[mtn] = np.zeros(len(s), type=float)
+    #         ov[mtn] = self.mts_dict[mtn].mjd_val()
+    #         om[mtn] = self.mts_dict[mtn].mjd_val()
+
+    #     # main iterations for all mts
+    #     for ni in range(len(nm)-1):
+    #         nmjd = nm[ni]
+    #         for mts_name in self.mts_dict:
+    #             print(ni)
 
     def add_mts_to_mts(self, mts_name_1, mts_name_2, mts_name_out):
         from timanda.mtserie import MTSerie

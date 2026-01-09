@@ -575,6 +575,7 @@ class MTSerie:
             self,
             period_s: float | int = 1,
             sh_s: float | int = 0.05,
+            snap_s: float | int = 0,
             tol_s: float | int = 7,
             start_mjd: float = None,
             stop_mjd: float = None
@@ -632,17 +633,22 @@ class MTSerie:
 
         tol_mjd = tol_s*s2mjd
         sh_mjd = sh_s*s2mjd
+        snap_mjd = snap_s*s2mjd
+
         first_mjd = self.first_mjd()
         first_mjd_int = np.floor(first_mjd)
         last_mjd = self.last_mjd()
         last_mjd_int = np.floor(last_mjd)
         period_mjd = period_s*s2mjd
+
         # find the last grid point before the first MJD
         if start_mjd is None:
             start_mjd = np.floor((first_mjd % 1)/period_mjd)*period_mjd + first_mjd_int
+
         # find the first grid point after the last MJD
         if stop_mjd is None:
             stop_mjd = np.ceil((last_mjd % 1)/period_mjd)*period_mjd + last_mjd_int
+
         nm = np.arange(start_mjd, stop_mjd, period_mjd)
         nv = np.zeros_like(nm, dtype=float)
         rm_mask = np.zeros_like(nm, dtype=bool)
@@ -652,12 +658,24 @@ class MTSerie:
         # main iterations for all mts
         oi = 0
         v = None
+
         for ni in range(len(nm)):
             dif = 1
             while (oi < len(om)-1 and om[oi] < nm[ni] + sh_mjd):
                 dif = nm[ni]-om[oi]
                 v = ov[oi]
                 oi = oi+1
+            
+            # --- NOWE: "snap" do siatki ---
+            # Jeżeli kolejny (pierwszy nie-skonsumowany) punkt jest bardzo blisko bieżącej
+            # chwili siatki (±snap_s), to użyj go od razu dla tego grid-pointu.
+            if oi < len(om) and abs(om[oi] - nm[ni]) <= snap_mjd:
+                v = ov[oi]
+                # opcjonalnie: skonsumuj go, żeby nie został użyty ponownie
+                if oi < len(om)-1:
+                    oi = oi+1
+            # --- koniec NOWE ---
+
             if v is not None:
                 nv[ni] = v
             else:
@@ -666,6 +684,7 @@ class MTSerie:
                 else:
                     nv[ni] = 0
                     rm_mask[ni] = True
+
         nts = TSerie(mjd=nm, val=nv)
         nmts = MTSerie()
         nmts.add_TSerie(nts)
