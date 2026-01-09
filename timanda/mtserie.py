@@ -578,7 +578,8 @@ class MTSerie:
             snap_s: float | int = 0,
             tol_s: float | int = 7,
             start_mjd: float = None,
-            stop_mjd: float = None
+            stop_mjd: float = None,
+            hold_last: bool = False,
         ):
         """
         Resample / align the time series to a regular time grid using a
@@ -660,30 +661,54 @@ class MTSerie:
         v = None
 
         for ni in range(len(nm)):
+            matched = False
             dif = 1
             while (oi < len(om)-1 and om[oi] < nm[ni] + sh_mjd):
                 dif = nm[ni]-om[oi]
                 v = ov[oi]
                 oi = oi+1
+                matched = True
             
             # --- NOWE: "snap" do siatki ---
             # Jeżeli kolejny (pierwszy nie-skonsumowany) punkt jest bardzo blisko bieżącej
             # chwili siatki (±snap_s), to użyj go od razu dla tego grid-pointu.
             if oi < len(om) and abs(om[oi] - nm[ni]) <= snap_mjd:
                 v = ov[oi]
+                matched = True
                 # opcjonalnie: skonsumuj go, żeby nie został użyty ponownie
                 if oi < len(om)-1:
                     oi = oi+1
             # --- koniec NOWE ---
 
-            if v is not None:
-                nv[ni] = v
-            else:
-                if om[oi] - nm[ni] < tol_mjd:
-                    nv[ni] = ov[oi]
+            if hold_last:
+                if v is not None:
+                    nv[ni] = v
                 else:
-                    nv[ni] = 0
-                    rm_mask[ni] = True
+                    if om[oi] - nm[ni] < tol_mjd:
+                        nv[ni] = ov[oi]
+                    else:
+                        nv[ni] = 0
+                        rm_mask[ni] = True
+            else:
+                # NEW behavior: do NOT fill gaps using last value.
+                # Keep only points that matched a real sample for this grid point.
+                if matched:
+                    nv[ni] = v
+                else:
+                    # Optional: allow "first future sample within tol" for early start
+                    # (only if you want it in no-hold mode as well).
+                    if v is None and oi < len(om) and (om[oi] - nm[ni]) < tol_mjd:
+                        nv[ni] = ov[oi]
+                        # Consume it to avoid reusing the same sample on multiple grid points
+                        if oi < len(om)-1:
+                            oi = oi+1
+                    else:
+                        nv[ni] = 0
+                        rm_mask[ni] = True
+
+                # IMPORTANT: do not carry state forward in no-hold mode
+                v = None  # <-- NEW: prevents holding last value
+
 
         nts = TSerie(mjd=nm, val=nv)
         nmts = MTSerie()

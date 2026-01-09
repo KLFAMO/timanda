@@ -292,6 +292,7 @@ class GTserie:
         stop_mjd: float | None = None,
         new_gts: bool = True,
         out_name: str = "aligned_common",
+        hold_last: bool = False,
     ):
         """
         Align all MTSerie objects to the same regular grid using align_to_grid_zoh()
@@ -340,6 +341,7 @@ class GTserie:
                 tol_s=tol_s,
                 start_mjd=start_mjd,
                 stop_mjd=stop_mjd,
+                hold_last=hold_last,
             )
 
             # Combine masks (logical OR): remove if missing in ANY series
