@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from decimal import Decimal as D
 from timanda.tserie import TSerie
+from timanda.mtserie import MTSerie
 from astropy.time import Time
 
 
@@ -71,3 +72,74 @@ def import_data_to_df_rocit_oc(
             df = pd.concat([df, p], ignore_index=True)
     df['mjd']=Time(pd.to_datetime(df['date']+' '+df['time'])).mjd
     return df
+
+import numpy as np
+
+mjd2s = 24 * 60 * 60
+
+def get_test_mtserie(
+    n_segments: int = 2,
+    fmjd: float = 60000.0,
+    segment_len_s: float = 5.0,
+    period_s: float = 1.0,
+    gap_s: float = 0.1,
+    noise_ampl: float = 1.0,
+    mean_val: float = 0.0,
+    mean_step: float = 0.0,          # zmiana średniej między segmentami (np. dryft skokowy)
+    trend_per_day: float = 0.0,      # trend liniowy w obrębie segmentu (val/dzień)
+    jitter_period_rel: float = 0.0,  # np. 0.1 => +/-10% okresu per segment
+    shuffle_segments: bool = False,  # do testu sortowania / scalania
+    seed: int | None = 123,
+    label_prefix: str = "seg",
+):
+    """
+    Return MTSerie composed of several TSerie segments.
+
+    segment_len_s: length of single segment in seconds
+    gap_s: gap between segments in seconds (can be 0)
+    jitter_period_rel: per-segment random modification of period_s by +/- this fraction
+    trend_per_day: linear trend inside segment (value change per day)
+    mean_step: change of mean value between segments (simulating step drift)
+    shuffle_segments: if True, randomize order of segments in MTSerie
+    seed: random seed for reproducibility
+    label_prefix: prefix for segment labels
+    """
+    rng = np.random.default_rng(seed)
+
+    segments = []
+    cur_start_mjd = fmjd
+
+    for i in range(n_segments):
+        # okres próbkowania dla segmentu (opcjonalnie jitter)
+        if jitter_period_rel > 0:
+            factor = 1.0 + rng.uniform(-jitter_period_rel, jitter_period_rel)
+            seg_period_s = max(1e-6, period_s * factor)
+        else:
+            seg_period_s = period_s
+
+        seg_len_mjd = segment_len_s / mjd2s
+        step_mjd = seg_period_s / mjd2s
+
+        seg_end_mjd = cur_start_mjd + seg_len_mjd
+        mjd_tab = np.arange(cur_start_mjd, seg_end_mjd, step_mjd)
+
+        # trend within segment
+        t_days = (mjd_tab - cur_start_mjd)  # days since segment start
+        seg_trend = trend_per_day * t_days
+
+        seg_mean = mean_val + i * mean_step
+        val_tab = rng.uniform(seg_mean - noise_ampl, seg_mean + noise_ampl, size=mjd_tab.shape) + seg_trend
+
+        ts = TSerie(mjd=mjd_tab, val=val_tab)
+        ts.label = f"{label_prefix}{i+1}"
+        segments.append(ts)
+
+        # next segment start
+        cur_start_mjd = seg_end_mjd + (gap_s / mjd2s)
+
+    if shuffle_segments:
+        rng.shuffle(segments)
+
+    mts = MTSerie(tseries=segments)
+
+    return mts
