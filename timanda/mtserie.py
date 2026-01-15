@@ -1,5 +1,5 @@
 from timanda.tserie import TSerie
-from typing import Optional, Union
+from typing import Optional, Union, Any
 import numpy as np
 import matplotlib.pyplot as plt
 import pyqtgraph as pg
@@ -9,6 +9,7 @@ import allantools as al
 from timanda.timeperiod import TimePeriods, TimePeriod
 s2mjd = 1/(60*60*24)  # seconds to MJD conversion factor
 from timanda.tserie import mjd2s
+import json
 
 
 class MTSerie:
@@ -931,3 +932,22 @@ class MTSerie:
 
         for ts in self.dtab:
             ts.add_sin(amplitude=amplitude, omega=omega)
+
+
+    def to_dict(self) -> dict:
+        """
+        Minimal dict export (v1): list of TSerie segments.
+        """
+        return {
+            "schema": "timanda-tsplot",
+            "version": 1,
+            "type": "MTS",
+            "segments": [ts.to_dict() for ts in self.dtab],
+        }
+
+    def to_json(self) -> str:
+        """
+        Minimal JSON export (v1).
+        """
+        return json.dumps(self.to_dict(), ensure_ascii=False)
+        

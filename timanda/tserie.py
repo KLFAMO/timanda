@@ -8,6 +8,7 @@ import pandas as pd
 import pyqtgraph as pg
 import allantools as al
 from astropy.convolution import Gaussian1DKernel, convolve
+import json
 
 logging.basicConfig(
     level=logging.INFO, format='%(levelname)s - timanda - %(message)s'
@@ -627,3 +628,22 @@ class TSerie:
             t = (self.mjd_tab[i])*mjd2s
             self.val_tab[i] += amplitude*np.sin(omega*t)
 
+
+    def to_dict(self) -> dict:
+        """
+        Minimal dict export of a single TSerie segment.
+        Exports raw mjd/val arrays only.
+        """
+        mjd = list(self.mjd_tab) if self.mjd_tab is not None else []
+        val = list(self.val_tab) if self.val_tab is not None else []
+        n = min(len(mjd), len(val))
+        return {
+            "mjd": mjd[:n],
+            "val": val[:n],
+        }
+
+    def to_json(self) -> str:
+        """
+        Minimal JSON export of a single TSerie.
+        """
+        return json.dumps(self.to_dict(), ensure_ascii=False)
