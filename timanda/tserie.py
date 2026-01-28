@@ -621,6 +621,118 @@ class TSerie:
             t_mjd.append(self.mjd_tab[-1])
         self.mjd_tab=np.array(t_mjd)
         self.val_tab=np.array(t_val)
+
+
+    def compute_plot_stats(
+        self,
+        *,
+        qy: float = 0.95,
+        linthresh_min_y: float | None = None,
+        linthresh_max_y: float | None = None,
+    ) -> dict:
+        """
+        Compute simple plot-oriented stats for this TSerie.
+
+        Returns
+        -------
+        dict:
+          {
+            "x": {
+              "n": int,
+              "min_mjd": float,
+              "max_mjd": float,
+              "span_s": float,
+              "dt_s_median": float | None,
+              "dt_s_min": float | None
+            },
+            "y": {
+              "n": int,
+              "min": float,
+              "max": float,
+              "center": float,
+              "linthresh": float,
+              "linear_low": float,
+              "linear_high": float,
+              "qy": float,
+              "spike_fraction": float
+            }
+          }
+        """
+        # ---------- X stats (time) ----------
+        x = np.asarray(self.mjd_tab, dtype=float)
+        x = x[np.isfinite(x)]
+        if x.size == 0:
+            raise ValueError("TSerie.compute_plot_stats: no finite samples in mjd_tab.")
+
+        x_min_mjd = float(np.min(x))
+        x_max_mjd = float(np.max(x))
+        span_s = float((x_max_mjd - x_min_mjd) * mjd2s)
+
+        if x.size >= 2:
+            xs = np.sort(x)
+            dx = np.diff(xs)
+            dx = dx[np.isfinite(dx)]
+            dx = dx[dx > 0]
+            if dx.size > 0:
+                dt_s_median = float(np.median(dx) * mjd2s)
+                dt_s_min = float(np.min(dx) * mjd2s)
+            else:
+                dt_s_median = None
+                dt_s_min = None
+        else:
+            dt_s_median = None
+            dt_s_min = None
+
+        x_dict = {
+            "n": int(x.size),
+            "min_mjd": x_min_mjd,
+            "max_mjd": x_max_mjd,
+            "span_s": span_s,
+            "dt_s_median": dt_s_median,
+            "dt_s_min": dt_s_min,
+        }
+
+        # ---------- Y stats ----------
+        y = np.asarray(self.val_tab, dtype=float)
+        y = y[np.isfinite(y)]
+        if y.size == 0:
+            raise ValueError("TSerie.compute_plot_stats: no finite samples in val_tab.")
+
+        y_min = float(np.min(y))
+        y_max = float(np.max(y))
+
+        center = float(np.median(y))
+        dev = np.abs(y - center)
+
+        linthresh = float(np.quantile(dev, qy))
+
+        # default minimal linthresh to avoid zero-width band
+        if linthresh_min_y is None:
+            linthresh_min_y = max(1e-12 * max(1.0, abs(center)), 0.0)
+
+        linthresh = max(linthresh, float(linthresh_min_y))
+        if linthresh_max_y is not None:
+            linthresh = min(linthresh, float(linthresh_max_y))
+
+        linear_low = float(center - linthresh)
+        linear_high = float(center + linthresh)
+
+        spike_fraction = float(np.mean(dev > linthresh))
+
+        y_dict = {
+            "n": int(y.size),
+            "min": y_min,
+            "max": y_max,
+            "center": center,
+            "linthresh": linthresh,
+            "linear_low": linear_low,
+            "linear_high": linear_high,
+            "qy": float(qy),
+            "spike_fraction": spike_fraction,
+        }
+
+        return {"x": x_dict, "y": y_dict}
+    
     
     def add_sin(self, amplitude=0, omega=0):
         mjd2s = 24*60*60
@@ -629,7 +741,7 @@ class TSerie:
             self.val_tab[i] += amplitude*np.sin(omega*t)
 
 
-    def to_dict(self) -> dict:
+    def to_dict(self, *, include_stats: bool = True) -> dict:
         """
         Minimal dict export of a single TSerie segment.
         Exports raw mjd/val arrays only.
@@ -637,10 +749,14 @@ class TSerie:
         mjd = list(self.mjd_tab) if self.mjd_tab is not None else []
         val = list(self.val_tab) if self.val_tab is not None else []
         n = min(len(mjd), len(val))
-        return {
+        d = {
+            "type": "tserie",
             "mjd": mjd[:n],
             "val": val[:n],
         }
+        if include_stats:
+            d["stats"] = self.compute_plot_stats()
+        return d
 
     def to_json(self) -> str:
         """

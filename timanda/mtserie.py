@@ -226,6 +226,7 @@ class MTSerie:
         except Exception as e:
             print(f"Unexpected error during reading file '{file_name}': {e}")
 
+
     def plot(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
              nolabels=False, time_unit='mjd'):
         for x in self.dtab:
@@ -934,16 +935,45 @@ class MTSerie:
             ts.add_sin(amplitude=amplitude, omega=omega)
 
 
-    def to_dict(self) -> dict:
-        """
-        Minimal dict export (v1): list of TSerie segments.
-        """
+    def _compute_mts_stats_from_segments(self, segments: list[dict]) -> dict:
+        # ---- X (time) ----
+        x_min = min(seg["stats"]["x"]["min_mjd"] for seg in segments)
+        x_max = max(seg["stats"]["x"]["max_mjd"] for seg in segments)
+        span_s = (x_max - x_min) * mjd2s
+
+        # ---- Y ----
+        y_min = min(seg["stats"]["y"]["min"] for seg in segments)
+        y_max = max(seg["stats"]["y"]["max"] for seg in segments)
+
         return {
+            "x": {
+                "min_mjd": x_min,
+                "max_mjd": x_max,
+                "span_s": float(span_s),
+            },
+            "y": {
+                "min": y_min,
+                "max": y_max,
+            },
+            "n_segments": len(segments),
+        }
+
+
+    def to_dict(self, *, include_stats: bool = True) -> dict:
+        segments = [ts.to_dict(include_stats=include_stats) for ts in self.dtab]
+
+        d = {
             "schema": "timanda-tsplot",
             "version": 1,
             "type": "MTS",
-            "segments": [ts.to_dict() for ts in self.dtab],
+            "segments": segments,
         }
+
+        if include_stats:
+            d["stats"] = self._compute_mts_stats_from_segments(segments)
+
+        return d
+
 
     def to_json(self) -> str:
         """
