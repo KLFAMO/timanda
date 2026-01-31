@@ -763,3 +763,30 @@ class TSerie:
         Minimal JSON export of a single TSerie.
         """
         return json.dumps(self.to_dict(), ensure_ascii=False)
+
+    def to_npz_payload(self, prefix: str = "") -> dict:
+        """
+        Prepares data for saving to NPZ file.
+        Params:
+            prefix (str): prefix to add to the keys in the output dictionary
+        Returns:
+            dict: dictionary with keys:
+                f"{prefix}mjd" - numpy array of mjd values
+                f"{prefix}val" - numpy array of val values
+                f"{prefix}pps" - numpy array of pps values
+                f"{prefix}label" - numpy array with a single unicode string (the label)
+        """
+        mjd = np.asarray(self.mjd_tab, dtype=np.float64)
+        val = np.asarray(self.val_tab, dtype=np.float64)
+
+        pps = np.asarray(self.pps_tab, dtype=np.int32) if hasattr(self, "pps_tab") else np.ones(len(mjd), dtype=np.int32)
+
+        # label jako unicode scalar (bez pickla)
+        label = np.array(self.label if self.label is not None else "", dtype=np.str_)
+
+        return {
+            f"{prefix}mjd": mjd,
+            f"{prefix}val": val,
+            f"{prefix}pps": pps,
+            f"{prefix}label": label,
+        }

@@ -4,6 +4,7 @@ from decimal import Decimal as D
 from timanda.tserie import TSerie
 from timanda.mtserie import MTSerie
 from astropy.time import Time
+mjd2s = 24 * 60 * 60
 
 
 def import_data_to_df_rocit_gnss(path='./Data_storage/sn112-nmij.dat'):
@@ -72,10 +73,6 @@ def import_data_to_df_rocit_oc(
             df = pd.concat([df, p], ignore_index=True)
     df['mjd']=Time(pd.to_datetime(df['date']+' '+df['time'])).mjd
     return df
-
-import numpy as np
-
-mjd2s = 24 * 60 * 60
 
 def get_test_mtserie(
     n_segments: int = 2,

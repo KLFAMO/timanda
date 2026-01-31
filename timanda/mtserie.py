@@ -1,5 +1,5 @@
 from timanda.tserie import TSerie
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, Dict, List
 import numpy as np
 import matplotlib.pyplot as plt
 import pyqtgraph as pg
@@ -10,6 +10,7 @@ from timanda.timeperiod import TimePeriods, TimePeriod
 s2mjd = 1/(60*60*24)  # seconds to MJD conversion factor
 from timanda.tserie import mjd2s
 import json
+from pathlib import Path
 
 
 class MTSerie:
@@ -980,4 +981,61 @@ class MTSerie:
         Minimal JSON export (v1).
         """
         return json.dumps(self.to_dict(), ensure_ascii=False)
-        
+    
+    def dump_npz(
+        self,
+        path,
+        *,
+        compress=False,
+        meta=None,
+        overwrite=True,
+    ):
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if path.exists() and not overwrite:
+            return path
+
+        save_fn = np.savez_compressed if compress else np.savez
+
+        payload = {
+            "ts_count": np.array(len(self.dtab), dtype=np.int64),
+            "meta_txt": np.array(
+                json.dumps(meta, ensure_ascii=False, sort_keys=True) if meta else "",
+                dtype=np.str_,
+            ),
+        }
+
+        for i, ts in enumerate(self.dtab):
+            payload[f"ts{i}_label"] = np.array(ts.label or "", dtype=np.str_)
+            payload[f"ts{i}_mjd"] = np.asarray(ts.mjd_tab, dtype=np.float64)
+            payload[f"ts{i}_val"] = np.asarray(ts.val_tab, dtype=np.float64)
+            payload[f"ts{i}_pps"] = np.asarray(ts.pps_tab, dtype=np.int32)
+
+        save_fn(path, **payload)
+        return path
+    
+    def append_npz(self, path, *, sort_after=True):
+
+        path = Path(path)
+
+        with np.load(path, allow_pickle=False) as z:
+            ts_count = int(z["ts_count"])
+
+            for i in range(ts_count):
+                ts = TSerie(
+                    label=str(z[f"ts{i}_label"]),
+                    mjd=z[f"ts{i}_mjd"].tolist(),
+                    val=z[f"ts{i}_val"].tolist(),
+                    pps=z[f"ts{i}_pps"].tolist(),
+                )
+                self.dtab.append(ts)
+
+        if sort_after:
+            self.dtab.sort(
+                key=lambda ts: ts.mjd_tab[0] if len(ts.mjd_tab) else float("inf")
+            )
+
+        return ts_count
+
