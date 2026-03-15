@@ -31,7 +31,8 @@ class TSerie:
 
     def __init__(
             self, label: str = '', mjd: list[float] = None,
-            val: list[float] = None, pps: list[int] = None
+            val: list[float] = None, pps: list[int] = None,
+            flags: list[int] = None, use_flags: bool = False,
         ):
         self.label = label
         self.mjd_tab = np.array(mjd, dtype=float) if mjd is not None else np.empty(0, dtype=float)
@@ -46,7 +47,12 @@ class TSerie:
         else:
             if len(pps) != len(self.mjd_tab):
                 raise ValueError("Length of pps must be equal to the length of mjd and val")
-            self.pps_tab = np.array(pps)
+            self.pps_tab = np.array(pps, dtype=int)
+        
+        self.flags = None
+        self.use_flags = use_flags
+        if self.use_flags or flags is not None:
+            self._create_flags_list(flags)
 
         self.len = len(self.mjd_tab)
         self.calc_tab()
@@ -54,33 +60,47 @@ class TSerie:
     def __str__(self):
         if len(self.mjd_tab) == 0:
             return '\tEmpty'
-        
+
         self.calc_tab()
         s = f'TSerie:\tlabel: {self.label}\tlength: {self.len}\tlen_mjd: {self.len_mjd:.6f}\n'
         s += self._format_data()
         return s
-    
-    def _format_data(self):
-        if self.len <= 10:
-            return ''.join(
-                f'\t{self.mjd_tab[i]:.6f}\t{self.val_tab[i]:f}\t{self.pps_tab[i]:f}\n'
-                for i in range(self.len)
+
+    def _format_row(self, i):
+        if self.flags is not None:
+            return (
+                f'\t{self.mjd_tab[i]:.6f}\t'
+                f'{self.val_tab[i]:f}\t'
+                f'{self.pps_tab[i]:d}\t'
+                f'{self.flags[i]:d}\n'
             )
         else:
-            first_part = ''.join(
-                f'\t{self.mjd_tab[i]:.6f}\t{self.val_tab[i]:f}\t{self.pps_tab[i]:f}\n'
-                for i in range(5)
+            return (
+                f'\t{self.mjd_tab[i]:.6f}\t'
+                f'{self.val_tab[i]:f}\t'
+                f'{self.pps_tab[i]:d}\n'
             )
-            last_part = ''.join(
-                f'\t{self.mjd_tab[i]:.6f}\t{self.val_tab[i]:f}\t{self.pps_tab[i]:f}\n'
-                for i in range(self.len - 5, self.len)
-            )
+
+    def _format_data(self):
+        if self.len <= 10:
+            return ''.join(self._format_row(i) for i in range(self.len))
+        else:
+            first_part = ''.join(self._format_row(i) for i in range(5))
+            last_part = ''.join(self._format_row(i) for i in range(self.len - 5, self.len))
             return first_part + '\t...\n' + last_part
 
     def _apply_operation(self, b, operation):
         if isinstance(b, (int, float)):
-            val = operation(self.val_tab, b)
-            return TSerie(val=val, mjd=self.mjd_tab)
+            kwargs = dict(
+                label=self.label,
+                mjd=self.mjd_tab.copy(),
+                val=operation(self.val_tab, b),
+                pps=self.pps_tab.copy(),
+                use_flags=self.use_flags,
+            )
+            if self.flags is not None:
+                kwargs["flags"] = self.flags.copy()
+            return TSerie(**kwargs)
         elif isinstance(b, TSerie):
             print(f'TSerie {operation.__name__} TSerie is not supported yet')
             return None
@@ -98,12 +118,24 @@ class TSerie:
 
     def __truediv__(self, b):
         return self._apply_operation(b, np.divide)
+
+    def _create_flags_list(self, flags: list[int] = None):
+        n = len(self.mjd_tab)
+
+        if flags is None:
+            self.flags = np.ones(n, dtype=int)
+        else:
+            if len(flags) != n:
+                raise ValueError("Length of flags must be equal to the length of mjd and val")
+            self.flags = np.array(flags, dtype=int)
     
     def rm_nans(self):
         not_nan_indexes = np.where(~np.isnan(self.val_tab))[0]
         self.mjd_tab = self.mjd_tab[not_nan_indexes]
         self.val_tab = self.val_tab[not_nan_indexes]
         self.pps_tab = self.pps_tab[not_nan_indexes]
+        if self.flags is not None:
+            self.flags = self.flags[not_nan_indexes]
 
     def calc_tab(self):
         """
@@ -142,10 +174,16 @@ class TSerie:
         return len(self.mjd_tab)
 
     def cp(self):
-        out = TSerie(label=self.label+'_cp',
-                     mjd=self.mjd_tab,
-                     val=self.val_tab)
-        return out
+        kwargs = dict(
+            label=self.label + '_cp',
+            mjd=self.mjd_tab.copy(),
+            val=self.val_tab.copy(),
+            pps=self.pps_tab.copy(),
+            use_flags=self.use_flags,
+        )
+        if self.flags is not None:
+            kwargs["flags"] = self.flags.copy()
+        return TSerie(**kwargs)
 
     def mean(self, decimal=False, decimal_out=False, use_pps=False):
         """
@@ -271,32 +309,81 @@ class TSerie:
         if self.len == 0:
             return []
         out_tab = []
-        tab_i = []
-        tab_i.append(0)
+        tab_i = [0]
+
         for i in range(0, len(self.s_tab)-1):
             if self.s_tab[i+1]-self.s_tab[i] > min_gap_s:
                 tab_i.append(i+1)
-        tab_i.append(len(self.s_tab)-1)
-        for j in range(0, len(tab_i)-1):
-            out_tab.append(TSerie(
-                mjd=self.mjd_tab[tab_i[j]:tab_i[j+1]],
-                val=self.val_tab[tab_i[j]:tab_i[j+1]],
-                pps=self.pps_tab[tab_i[j]:tab_i[j+1]],
-            ))
+
+        tab_i.append(len(self.s_tab))
+        # before: tab_i.append(len(self.s_tab)-1)
+
+        for j in range(len(tab_i)-1):
+            i1 = tab_i[j]
+            i2 = tab_i[j+1]
+
+            kwargs = dict(
+                mjd=self.mjd_tab[i1:i2],
+                val=self.val_tab[i1:i2],
+                pps=self.pps_tab[i1:i2],
+                use_flags=self.use_flags
+            )
+            if self.flags is not None:
+                kwargs["flags"] = self.flags[i1:i2]
+
+            out_tab.append(TSerie(**kwargs))
+
         return out_tab
 
-    def append(self, mjd, val, pps=None):
+
+    def append(self, mjd, val, pps=None, flags=None):
+        mjd = np.atleast_1d(mjd)
+        val = np.atleast_1d(val)
+
+        if len(mjd) != len(val):
+            raise ValueError("Length of mjd and val must be equal")
+
+        n_new = len(mjd)
+
+        if pps is None:
+            pps = np.ones(n_new, dtype=int)
+        else:
+            pps = np.atleast_1d(pps)
+            if len(pps) != n_new:
+                raise ValueError("Length of pps must be equal to the length of mjd and val")
+
         self.mjd_tab = np.append(self.mjd_tab, mjd)
         self.val_tab = np.append(self.val_tab, val)
-        if pps:
-            self.pps_tab = np.append(self.pps_tab, pps)
-        else:
-            self.pps_tab = np.append(self.pps_tab, 1)
+        self.pps_tab = np.append(self.pps_tab, pps)
+
+        if self.use_flags:
+            if self.flags is None:
+                self.flags = np.ones(self.len, dtype=int)
+
+            if flags is None:
+                flags = np.ones(n_new, dtype=int)
+            else:
+                flags = np.atleast_1d(flags)
+                if len(flags) != n_new:
+                    raise ValueError("Length of flags must be equal to the length of mjd and val")
+
+            self.flags = np.append(self.flags, flags)
+
+        self.len = len(self.mjd_tab)
+        self.calc_tab()
+
 
     def last(self):
-        out = TSerie()
-        out.append(self.mjd_tab[-1], self.val_tab[-1], self.pps_tab[-1])
-        return out
+        kwargs = dict(
+            mjd=[self.mjd_tab[-1]],
+            val=[self.val_tab[-1]],
+            pps=[self.pps_tab[-1]],
+            use_flags=self.use_flags,
+        )
+        if self.flags is not None:
+            kwargs["flags"] = [self.flags[-1]]
+        return TSerie(**kwargs)
+
 
     def mjd2index(self, mjd, init_index=None):
         """Returns index of tab corresponding to mjd
@@ -338,75 +425,95 @@ class TSerie:
     def mjd2val(self, mjd, init_index=None):
         return self.val_tab[self.mjd2index(mjd, init_index=init_index)]
 
+    
     def getrange(self, fmjd, tmjd, fmjd_init=None, tmjd_init=None):
-        if (fmjd > self.mjd_stop or tmjd < self.mjd_start):
+        if fmjd > self.mjd_stop or tmjd < self.mjd_start:
             return None
+
         if fmjd < self.mjd_start:
             fmjd = self.mjd_start
         if tmjd > self.mjd_stop:
             tmjd = self.mjd_stop
+
         fN = self.mjd2index(fmjd, init_index=fmjd_init)
         tN = self.mjd2index(tmjd, init_index=tmjd_init)
+
         if tN is None:
             return None
-        s = TSerie(
-            mjd=self.mjd_tab[fN:tN+1],
-            val=self.val_tab[fN:tN+1]
-        )
+
+        kwargs = {
+            "mjd": self.mjd_tab[fN:tN+1],
+            "val": self.val_tab[fN:tN+1],
+            "pps": self.pps_tab[fN:tN+1],
+            "use_flags": self.use_flags,
+        }
+
+        if self.flags is not None:
+            kwargs["flags"] = self.flags[fN:tN+1]
+
+        s = TSerie(**kwargs)
+
         if s.mjd_tab[0] < fmjd:
             s.rm_first(1)
+
         if len(s.mjd_tab) == 0:
             return None
+
         if s.mjd_tab[-1] > tmjd:
             s.rm_last(1)
+
         return s
 
     def rmrange(self, fmjd, tmjd):
-        if (fmjd > self.mjd_stop or tmjd < self.mjd_start):
+        def make_tserie(start, stop):
+            kwargs = {
+                "mjd": self.mjd_tab[start:stop],
+                "val": self.val_tab[start:stop],
+                "pps": self.pps_tab[start:stop],
+                "use_flags": self.use_flags,
+            }
+            if self.flags is not None:
+                kwargs["flags"] = self.flags[start:stop]
+            return TSerie(**kwargs)
+
+        if fmjd > self.mjd_stop or tmjd < self.mjd_start:
             return (self, 0)
-        if (fmjd <= self.mjd_start and tmjd >= self.mjd_stop):
+
+        if fmjd <= self.mjd_start and tmjd >= self.mjd_stop:
             return (None, 1)
+
         fN = self.mjd2index(fmjd)
         tN = self.mjd2index(tmjd)
-        if (fmjd <= self.mjd_start and tmjd < self.mjd_stop):
-            return (TSerie(
-                mjd=self.mjd_tab[(tN+1):],
-                val=self.val_tab[(tN+1):],
-                pps=self.pps_tab[(tN+1):],
-                ),
-                2
-            )
-        if (fmjd > self.mjd_start and tmjd >= self.mjd_stop):
+
+        if fmjd <= self.mjd_start and tmjd < self.mjd_stop:
+            return (make_tserie(tN + 1, None), 2)
+
+        if fmjd > self.mjd_start and tmjd >= self.mjd_stop:
             if fmjd != self.mjd_tab[fN]:
-                fN = fN+1
-            return (TSerie(
-                mjd=self.mjd_tab[:fN],
-                val=self.val_tab[:fN],
-                pps=self.pps_tab[:fN],
-                ),
-                3)
-        if (fmjd > self.mjd_start and tmjd < self.mjd_stop):
+                fN = fN + 1
+            return (make_tserie(0, fN), 3)
+
+        if fmjd > self.mjd_start and tmjd < self.mjd_stop:
             if fmjd != self.mjd_tab[fN]:
-                fN = fN+1
-            left = TSerie(
-                mjd=self.mjd_tab[:fN],
-                val=self.val_tab[:fN],
-                pps=self.pps_tab[:fN],
-            )
-            right = TSerie(
-                mjd=self.mjd_tab[(tN+1):],
-                val=self.val_tab[(tN+1):],
-                pps=self.pps_tab[(tN+1):],
-            )
+                fN = fN + 1
+
+            left = make_tserie(0, fN)
+            right = make_tserie(tN + 1, None)
             return ([left, right], 4)
     
     def rm_indexes(self, indexes):
         if indexes is None:
             return
+
         self.mjd_tab = np.delete(self.mjd_tab, indexes)
         self.val_tab = np.delete(self.val_tab, indexes)
         self.pps_tab = np.delete(self.pps_tab, indexes)
+
+        if self.flags is not None:
+            self.flags = np.delete(self.flags, indexes)
+
         self.len = len(self.mjd_tab)
+        self.calc_tab()
 
     def rm_outlayers_singledelta(self, max_delta):
         self.calc_tab()
@@ -446,19 +553,19 @@ class TSerie:
         self.mjd_tab = self.mjd_tab+sec/(24*60*60)
         self.calc_tab()
 
-    def show(self):
-        N = 5
-        if len(self.mjd_tab) > 2*N:
-            for x in range(0, 5):
-                print(self.mjd_tab[x], self.val_tab[x], self.pps_tab[x])
-            print('...')
-            for x in range(self.length-6, self.length-1):
-                print(self.mjd_tab[x], self.val_tab[x], self.pps_tab[x])
-        elif len(self.mjd_tab) > 0:
-            for x in range(0, 2*N-1):
-                print(self.mjd_tab[x], self.val_tab[x], self.pps_tab[x])
-        else:
-            print('Empty')
+    # def show(self):
+    #     N = 5
+    #     if len(self.mjd_tab) > 2*N:
+    #         for x in range(0, 5):
+    #             print(self.mjd_tab[x], self.val_tab[x], self.pps_tab[x])
+    #         print('...')
+    #         for x in range(self.length-6, self.length-1):
+    #             print(self.mjd_tab[x], self.val_tab[x], self.pps_tab[x])
+    #     elif len(self.mjd_tab) > 0:
+    #         for x in range(0, 2*N-1):
+    #             print(self.mjd_tab[x], self.val_tab[x], self.pps_tab[x])
+    #     else:
+    #         print('Empty')
 
     def plot(self):
         plt.figure()
@@ -573,12 +680,20 @@ class TSerie:
         self.val_tab = np.delete(self.val_tab, np.s_[0:n], None)
         self.mjd_tab = np.delete(self.mjd_tab, np.s_[0:n], None)
         self.pps_tab = np.delete(self.pps_tab, np.s_[0:n], None)
+
+        if self.flags is not None:
+            self.flags = np.delete(self.flags, np.s_[0:n], None)
+
         self.calc_tab()
 
     def rm_last(self, n=1):
         self.val_tab = np.delete(self.val_tab, np.s_[-n:], None)
         self.mjd_tab = np.delete(self.mjd_tab, np.s_[-n:], None)
         self.pps_tab = np.delete(self.pps_tab, np.s_[-n:], None)
+
+        if self.flags is not None:
+            self.flags = np.delete(self.flags, np.s_[-n:], None)
+
         self.calc_tab()
 
     def gauss_filter(self, stddev=50):
@@ -609,18 +724,42 @@ class TSerie:
         return self.mjd_tab[-1]
     
     def time_diff_to_freq_diff(self, fill_last_point=True):
-        t_mjd=list()
-        t_val=list()
-        for i in range(0, len(self.mjd_tab)-1):
-            delta_mjd_s = (self.mjd_tab[i+1]-self.mjd_tab[i])*(24*60*60)
-            f = (self.val_tab[i+1]-self.val_tab[i])/delta_mjd_s
+        if self.len < 2:
+            return
+
+        t_mjd = []
+        t_val = []
+        t_pps = []
+        t_flags = [] if (self.use_flags and self.flags is not None) else None
+
+        for i in range(self.len - 1):
+            delta_mjd_s = (self.mjd_tab[i + 1] - self.mjd_tab[i]) * (24 * 60 * 60)
+            f = (self.val_tab[i + 1] - self.val_tab[i]) / delta_mjd_s
+
             t_mjd.append(self.mjd_tab[i])
             t_val.append(f)
+            t_pps.append(self.pps_tab[i])
+
+            if t_flags is not None:
+                t_flags.append(self.flags[i])
+
         if fill_last_point:
-            t_val.append(t_mjd[-1])
             t_mjd.append(self.mjd_tab[-1])
-        self.mjd_tab=np.array(t_mjd)
-        self.val_tab=np.array(t_val)
+            t_val.append(t_val[-1])
+            t_pps.append(self.pps_tab[-1])
+
+            if t_flags is not None:
+                t_flags.append(self.flags[-1])
+
+        self.mjd_tab = np.array(t_mjd, dtype=float)
+        self.val_tab = np.array(t_val, dtype=float)
+        self.pps_tab = np.array(t_pps, dtype=int)
+
+        if t_flags is not None:
+            self.flags = np.array(t_flags, dtype=int)
+
+        self.len = len(self.mjd_tab)
+        self.calc_tab()
 
 
     def compute_plot_stats(
@@ -754,8 +893,13 @@ class TSerie:
             "mjd": mjd[:n],
             "val": val[:n],
         }
+
+        if self.flags is not None:
+            d["flags"] = list(self.flags[:n])
+        
         if include_stats:
             d["stats"] = self.compute_plot_stats()
+        
         return d
 
     def to_json(self) -> str:
@@ -775,18 +919,18 @@ class TSerie:
                 f"{prefix}val" - numpy array of val values
                 f"{prefix}pps" - numpy array of pps values
                 f"{prefix}label" - numpy array with a single unicode string (the label)
+                f"{prefix}use_flags" - numpy array with a single bool value
+                f"{prefix}flags" - numpy array of flags values (only if flags exist)
         """
-        mjd = np.asarray(self.mjd_tab, dtype=np.float64)
-        val = np.asarray(self.val_tab, dtype=np.float64)
-
-        pps = np.asarray(self.pps_tab, dtype=np.int32) if hasattr(self, "pps_tab") else np.ones(len(mjd), dtype=np.int32)
-
-        # label jako unicode scalar (bez pickla)
-        label = np.array(self.label if self.label is not None else "", dtype=np.str_)
-
-        return {
-            f"{prefix}mjd": mjd,
-            f"{prefix}val": val,
-            f"{prefix}pps": pps,
-            f"{prefix}label": label,
+        payload = {
+            f"{prefix}mjd": np.asarray(self.mjd_tab, dtype=np.float64),
+            f"{prefix}val": np.asarray(self.val_tab, dtype=np.float64),
+            f"{prefix}pps": np.asarray(self.pps_tab, dtype=np.int32),
+            f"{prefix}label": np.array(self.label if self.label is not None else "", dtype=np.str_),
+            f"{prefix}use_flags": np.array(self.use_flags, dtype=np.bool_),
         }
+
+        if self.flags is not None:
+            payload[f"{prefix}flags"] = np.asarray(self.flags, dtype=np.int32)
+
+        return payload

@@ -1,6 +1,7 @@
 from timanda.tserie import TSerie
 from decimal import Decimal as D
 import numpy as np
+import pytest
 
 def test_create_empty_tserie():
     ts = TSerie()
@@ -64,11 +65,12 @@ def test_tserie_str_small_data():
     result = str(ts)
     expected = (
         "TSerie:\tlabel: Test Series\tlength: 3\tlen_mjd: 2.000000\n"
-        "\t1.000000\t10.000000\t1.000000\n"
-        "\t2.000000\t20.000000\t1.000000\n"
-        "\t3.000000\t30.000000\t1.000000\n"
+        "\t1.000000\t10.000000\t1\n"
+        "\t2.000000\t20.000000\t1\n"
+        "\t3.000000\t30.000000\t1\n"
     )
     assert result == expected
+
 
 def test_tserie_str_large_data():
     ts = TSerie(
@@ -79,17 +81,34 @@ def test_tserie_str_large_data():
     result = str(ts)
     expected = (
         "TSerie:\tlabel: Large Series\tlength: 20\tlen_mjd: 19.000000\n"
-        "\t1.000000\t10.000000\t1.000000\n"
-        "\t2.000000\t11.000000\t1.000000\n"
-        "\t3.000000\t12.000000\t1.000000\n"
-        "\t4.000000\t13.000000\t1.000000\n"
-        "\t5.000000\t14.000000\t1.000000\n"
+        "\t1.000000\t10.000000\t1\n"
+        "\t2.000000\t11.000000\t1\n"
+        "\t3.000000\t12.000000\t1\n"
+        "\t4.000000\t13.000000\t1\n"
+        "\t5.000000\t14.000000\t1\n"
         "\t...\n"
-        "\t16.000000\t25.000000\t1.000000\n"
-        "\t17.000000\t26.000000\t1.000000\n"
-        "\t18.000000\t27.000000\t1.000000\n"
-        "\t19.000000\t28.000000\t1.000000\n"
-        "\t20.000000\t29.000000\t1.000000\n"
+        "\t16.000000\t25.000000\t1\n"
+        "\t17.000000\t26.000000\t1\n"
+        "\t18.000000\t27.000000\t1\n"
+        "\t19.000000\t28.000000\t1\n"
+        "\t20.000000\t29.000000\t1\n"
+    )
+    assert result == expected
+
+def test_tserie_str_with_flags():
+    ts = TSerie(
+        label="Flags Series",
+        mjd=[1.0, 2.0, 3.0],
+        val=[10.0, 20.0, 30.0],
+        flags=[1, 0, 1],
+        use_flags=True,
+    )
+    result = str(ts)
+    expected = (
+        "TSerie:\tlabel: Flags Series\tlength: 3\tlen_mjd: 2.000000\n"
+        "\t1.000000\t10.000000\t1\t1\n"
+        "\t2.000000\t20.000000\t1\t0\n"
+        "\t3.000000\t30.000000\t1\t1\n"
     )
     assert result == expected
 
@@ -325,3 +344,890 @@ def test_rm_drift_with_single_point():
     ts = TSerie(mjd=[1.0], val=[10.0])
     ts.rm_drift()
     assert np.allclose(ts.val_tab, [0.0]), "Drift removal for a single point should result in 0.0"
+
+# split
+
+def test_split_with_flags():
+    mjd = [
+        60000.000000,
+        60000.000010,
+        60000.000020,
+        60000.000030,
+
+        60000.000200,
+        60000.000210,
+        60000.000220,
+        60000.000230,
+
+        60000.000400,
+        60000.000410,
+        60000.000420,
+        60000.000430,
+    ]
+
+    val = list(range(12))
+    pps = list(range(1, 13))
+    flags = [1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1]
+
+    ts = TSerie(
+        mjd=mjd,
+        val=val,
+        pps=pps,
+        flags=flags,
+        use_flags=True
+    )
+
+    out = ts.split(min_gap_s=8)
+
+    assert len(out) == 3
+
+    assert np.array_equal(out[0].mjd_tab, np.array(mjd[0:4]))
+    assert np.array_equal(out[0].flags, np.array(flags[0:4]))
+
+    assert np.array_equal(out[1].mjd_tab, np.array(mjd[4:8]))
+    assert np.array_equal(out[1].flags, np.array(flags[4:8]))
+
+    assert np.array_equal(out[2].mjd_tab, np.array(mjd[8:12]))
+    assert np.array_equal(out[2].flags, np.array(flags[8:12]))
+
+    for seg in out:
+        assert seg.use_flags is True
+
+def test_split_without_flags():
+    mjd = [
+        60000.000000,
+        60000.000010,
+        60000.000020,
+        60000.000030,
+
+        60000.000200,
+        60000.000210,
+        60000.000220,
+        60000.000230,
+
+        60000.000400,
+        60000.000410,
+        60000.000420,
+        60000.000430,
+    ]
+
+    val = list(range(12))
+    pps = list(range(1, 13))
+
+    ts = TSerie(
+        mjd=mjd,
+        val=val,
+        pps=pps,
+        use_flags=False
+    )
+
+    out = ts.split(min_gap_s=8)
+
+    assert len(out) == 3
+
+    assert np.array_equal(out[0].mjd_tab, np.array(mjd[0:4]))
+    assert np.array_equal(out[1].mjd_tab, np.array(mjd[4:8]))
+    assert np.array_equal(out[2].mjd_tab, np.array(mjd[8:12]))
+
+    for seg in out:
+        assert seg.flags is None
+        assert seg.use_flags is False
+
+
+# append
+
+def test_append_single_without_flags():
+    ts = TSerie(
+        mjd=[60000.0, 60000.0001],
+        val=[10.0, 11.0],
+        pps=[1, 2],
+        use_flags=False,
+    )
+
+    ts.append(60000.0002, 12.0, pps=3, flags=0)
+
+    assert np.array_equal(ts.mjd_tab, np.array([60000.0, 60000.0001, 60000.0002]))
+    assert np.array_equal(ts.val_tab, np.array([10.0, 11.0, 12.0]))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 3]))
+    assert ts.flags is None
+    assert ts.use_flags is False
+
+def test_append_single_with_flags():
+    ts = TSerie(
+        mjd=[60000.0, 60000.0001],
+        val=[10.0, 11.0],
+        pps=[1, 2],
+        use_flags=True,
+    )
+
+    ts.append(60000.0002, 12.0, pps=3, flags=0)
+
+    assert np.array_equal(ts.mjd_tab, np.array([60000.0, 60000.0001, 60000.0002]))
+    assert np.array_equal(ts.val_tab, np.array([10.0, 11.0, 12.0]))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 3]))
+    assert np.array_equal(ts.flags, np.array([1, 1, 0]))
+    assert ts.use_flags is True
+
+def test_append_array_without_flags():
+    ts = TSerie(
+        mjd=[60000.0, 60000.0001],
+        val=[10.0, 11.0],
+        pps=[1, 2],
+        use_flags=False,
+    )
+
+    ts.append(
+        [60000.0002, 60000.0003, 60000.0004],
+        [12.0, 13.0, 14.0],
+        pps=[3, 4, 5],
+        flags=[0, 1, 0],
+    )
+
+    assert np.array_equal(
+        ts.mjd_tab,
+        np.array([60000.0, 60000.0001, 60000.0002, 60000.0003, 60000.0004])
+    )
+    assert np.array_equal(
+        ts.val_tab,
+        np.array([10.0, 11.0, 12.0, 13.0, 14.0])
+    )
+    assert np.array_equal(
+        ts.pps_tab,
+        np.array([1, 2, 3, 4, 5])
+    )
+    assert ts.flags is None
+    assert ts.use_flags is False
+
+def test_append_array_with_flags():
+    ts = TSerie(
+        mjd=[60000.0, 60000.0001],
+        val=[10.0, 11.0],
+        pps=[1, 2],
+        use_flags=True,
+    )
+
+    ts.append(
+        [60000.0002, 60000.0003, 60000.0004],
+        [12.0, 13.0, 14.0],
+        pps=[3, 4, 5],
+        flags=[0, 1, 0],
+    )
+
+    assert np.array_equal(
+        ts.mjd_tab,
+        np.array([60000.0, 60000.0001, 60000.0002, 60000.0003, 60000.0004])
+    )
+    assert np.array_equal(
+        ts.val_tab,
+        np.array([10.0, 11.0, 12.0, 13.0, 14.0])
+    )
+    assert np.array_equal(
+        ts.pps_tab,
+        np.array([1, 2, 3, 4, 5])
+    )
+    assert np.array_equal(
+        ts.flags,
+        np.array([1, 1, 0, 1, 0])
+    )
+    assert ts.use_flags is True
+
+def test_append_array_with_default_pps_and_flags():
+    ts = TSerie(
+        mjd=[60000.0],
+        val=[10.0],
+        use_flags=True,
+    )
+
+    ts.append(
+        [60000.0001, 60000.0002],
+        [11.0, 12.0],
+    )
+
+    assert np.array_equal(
+        ts.mjd_tab,
+        np.array([60000.0, 60000.0001, 60000.0002])
+    )
+    assert np.array_equal(
+        ts.val_tab,
+        np.array([10.0, 11.0, 12.0])
+    )
+    assert np.array_equal(
+        ts.pps_tab,
+        np.array([1, 1, 1])
+    )
+    assert np.array_equal(
+        ts.flags,
+        np.array([1, 1, 1])
+    )
+
+
+def test_append_raises_for_wrong_pps_length():
+    ts = TSerie(
+        mjd=[60000.0],
+        val=[10.0],
+    )
+
+    with pytest.raises(ValueError, match="Length of pps"):
+        ts.append(
+            [60000.0001, 60000.0002],
+            [11.0, 12.0],
+            pps=[3],
+        )
+
+
+def test_append_raises_for_wrong_flags_length():
+    ts = TSerie(
+        mjd=[60000.0],
+        val=[10.0],
+        use_flags=True,
+    )
+
+    with pytest.raises(ValueError, match="Length of flags"):
+        ts.append(
+            [60000.0001, 60000.0002],
+            [11.0, 12.0],
+            flags=[1],
+        )
+
+
+def test_append_raises_for_wrong_mjd_val_length():
+    ts = TSerie(
+        mjd=[60000.0],
+        val=[10.0],
+    )
+
+    with pytest.raises(ValueError, match="Length of mjd and val must be equal"):
+        ts.append(
+            [60000.0001, 60000.0002],
+            [11.0],
+        )
+
+# getrange
+
+def test_getrange_with_flags():
+    mjd = [
+        60000.000000,
+        60000.000010,
+        60000.000020,
+        60000.000030,
+        60000.000040,
+        60000.000050,
+        60000.000060,
+    ]
+    val = [10, 11, 12, 13, 14, 15, 16]
+    pps = [1, 2, 3, 4, 5, 6, 7]
+    flags = [1, 0, 1, 1, 0, 1, 0]
+
+    ts = TSerie(
+        mjd=mjd,
+        val=val,
+        pps=pps,
+        flags=flags,
+        use_flags=True,
+    )
+
+    out = ts.getrange(60000.000015, 60000.000055)
+
+    assert out is not None
+    assert np.array_equal(
+        out.mjd_tab,
+        np.array([60000.000020, 60000.000030, 60000.000040, 60000.000050])
+    )
+    assert np.array_equal(out.val_tab, np.array([12, 13, 14, 15], dtype=float))
+    assert np.array_equal(out.pps_tab, np.array([3, 4, 5, 6]))
+    assert np.array_equal(out.flags, np.array([1, 1, 0, 1]))
+    assert out.use_flags is True
+
+
+def test_getrange_without_flags():
+    mjd = [
+        60000.000000,
+        60000.000010,
+        60000.000020,
+        60000.000030,
+        60000.000040,
+        60000.000050,
+        60000.000060,
+    ]
+    val = [10, 11, 12, 13, 14, 15, 16]
+    pps = [1, 2, 3, 4, 5, 6, 7]
+
+    ts = TSerie(
+        mjd=mjd,
+        val=val,
+        pps=pps,
+        use_flags=False,
+    )
+
+    out = ts.getrange(60000.000015, 60000.000055)
+
+    assert out is not None
+    assert np.array_equal(
+        out.mjd_tab,
+        np.array([60000.000020, 60000.000030, 60000.000040, 60000.000050])
+    )
+    assert np.array_equal(out.val_tab, np.array([12, 13, 14, 15], dtype=float))
+    assert np.array_equal(out.pps_tab, np.array([3, 4, 5, 6]))
+    assert out.flags is None
+    assert out.use_flags is False
+
+
+def test_getrange_outside_returns_none():
+    ts = TSerie(
+        mjd=[60000.0, 60000.0001, 60000.0002],
+        val=[10.0, 11.0, 12.0],
+        use_flags=False,
+    )
+
+    out = ts.getrange(60001.0, 60001.1)
+
+    assert out is None
+
+
+def test_getrange_clips_to_series_bounds():
+    ts = TSerie(
+        mjd=[60000.0, 60000.0001, 60000.0002],
+        val=[10.0, 11.0, 12.0],
+        pps=[1, 2, 3],
+        use_flags=False,
+    )
+
+    out = ts.getrange(59999.0, 60001.0)
+
+    assert out is not None
+    assert np.array_equal(
+        out.mjd_tab,
+        np.array([60000.0, 60000.0001, 60000.0002])
+    )
+    assert np.array_equal(out.val_tab, np.array([10.0, 11.0, 12.0]))
+    assert np.array_equal(out.pps_tab, np.array([1, 2, 3]))
+
+
+def test_getrange_rm_first_and_last():
+    mjd = [
+        60000.000000,
+        60000.000010,
+        60000.000020,
+        60000.000030,
+        60000.000040,
+    ]
+    val = [10, 11, 12, 13, 14]
+
+    ts = TSerie(
+        mjd=mjd,
+        val=val,
+        use_flags=False,
+    )
+
+    # zakres zaczyna się i kończy pomiędzy punktami
+    out = ts.getrange(60000.000015, 60000.000035)
+
+    assert out is not None
+    assert np.array_equal(
+        out.mjd_tab,
+        np.array([60000.000020, 60000.000030])
+    )
+    assert np.array_equal(
+        out.val_tab,
+        np.array([12, 13], dtype=float)
+    )
+
+# rmrange
+
+def test_rmrange_no_overlap_returns_self():
+    ts = TSerie(
+        mjd=[60000.000000, 60000.000010, 60000.000020],
+        val=[10.0, 11.0, 12.0],
+        pps=[1, 2, 3],
+        use_flags=False,
+    )
+
+    out, code = ts.rmrange(60001.0, 60001.1)
+
+    assert code == 0
+    assert out is ts
+
+
+def test_rmrange_removes_all():
+    ts = TSerie(
+        mjd=[60000.000000, 60000.000010, 60000.000020],
+        val=[10.0, 11.0, 12.0],
+        pps=[1, 2, 3],
+        use_flags=False,
+    )
+
+    out, code = ts.rmrange(59999.0, 60001.0)
+
+    assert code == 1
+    assert out is None
+
+
+def test_rmrange_remove_left_part_without_flags():
+    ts = TSerie(
+        mjd=[
+            60000.000000,
+            60000.000010,
+            60000.000020,
+            60000.000030,
+            60000.000040,
+        ],
+        val=[10, 11, 12, 13, 14],
+        pps=[1, 2, 3, 4, 5],
+        use_flags=False,
+    )
+
+    out, code = ts.rmrange(59999.0, 60000.000020)
+
+    assert code == 2
+    assert out is not None
+    assert np.array_equal(out.mjd_tab, np.array([60000.000030, 60000.000040]))
+    assert np.array_equal(out.val_tab, np.array([13, 14], dtype=float))
+    assert np.array_equal(out.pps_tab, np.array([4, 5]))
+    assert out.flags is None
+    assert out.use_flags is False
+
+
+def test_rmrange_remove_right_part_without_flags():
+    ts = TSerie(
+        mjd=[
+            60000.000000,
+            60000.000010,
+            60000.000020,
+            60000.000030,
+            60000.000040,
+        ],
+        val=[10, 11, 12, 13, 14],
+        pps=[1, 2, 3, 4, 5],
+        use_flags=False,
+    )
+
+    out, code = ts.rmrange(60000.000020, 60001.0)
+
+    assert code == 3
+    assert out is not None
+    assert np.array_equal(out.mjd_tab, np.array([60000.000000, 60000.000010]))
+    assert np.array_equal(out.val_tab, np.array([10, 11], dtype=float))
+    assert np.array_equal(out.pps_tab, np.array([1, 2]))
+    assert out.flags is None
+    assert out.use_flags is False
+
+
+def test_rmrange_remove_middle_without_flags():
+    ts = TSerie(
+        mjd=[
+            60000.000000,
+            60000.000010,
+            60000.000020,
+            60000.000030,
+            60000.000040,
+            60000.000050,
+            60000.000060,
+        ],
+        val=[10, 11, 12, 13, 14, 15, 16],
+        pps=[1, 2, 3, 4, 5, 6, 7],
+        use_flags=False,
+    )
+
+    out, code = ts.rmrange(60000.000020, 60000.000040)
+
+    assert code == 4
+    assert isinstance(out, list)
+    assert len(out) == 2
+
+    left, right = out
+
+    assert np.array_equal(left.mjd_tab, np.array([60000.000000, 60000.000010]))
+    assert np.array_equal(left.val_tab, np.array([10, 11], dtype=float))
+    assert np.array_equal(left.pps_tab, np.array([1, 2]))
+    assert left.flags is None
+    assert left.use_flags is False
+
+    assert np.array_equal(right.mjd_tab, np.array([60000.000050, 60000.000060]))
+    assert np.array_equal(right.val_tab, np.array([15, 16], dtype=float))
+    assert np.array_equal(right.pps_tab, np.array([6, 7]))
+    assert right.flags is None
+    assert right.use_flags is False
+
+
+def test_rmrange_remove_middle_with_flags():
+    ts = TSerie(
+        mjd=[
+            60000.000000,
+            60000.000010,
+            60000.000020,
+            60000.000030,
+            60000.000040,
+            60000.000050,
+            60000.000060,
+        ],
+        val=[10, 11, 12, 13, 14, 15, 16],
+        pps=[1, 2, 3, 4, 5, 6, 7],
+        flags=[1, 0, 1, 1, 0, 1, 0],
+        use_flags=True,
+    )
+
+    out, code = ts.rmrange(60000.000020, 60000.000040)
+
+    assert code == 4
+    assert isinstance(out, list)
+    assert len(out) == 2
+
+    left, right = out
+
+    assert np.array_equal(left.mjd_tab, np.array([60000.000000, 60000.000010]))
+    assert np.array_equal(left.val_tab, np.array([10, 11], dtype=float))
+    assert np.array_equal(left.pps_tab, np.array([1, 2]))
+    assert np.array_equal(left.flags, np.array([1, 0]))
+    assert left.use_flags is True
+
+    assert np.array_equal(right.mjd_tab, np.array([60000.000050, 60000.000060]))
+    assert np.array_equal(right.val_tab, np.array([15, 16], dtype=float))
+    assert np.array_equal(right.pps_tab, np.array([6, 7]))
+    assert np.array_equal(right.flags, np.array([1, 0]))
+    assert right.use_flags is True
+
+
+def test_rmrange_remove_left_part_with_flags():
+    ts = TSerie(
+        mjd=[
+            60000.000000,
+            60000.000010,
+            60000.000020,
+            60000.000030,
+            60000.000040,
+        ],
+        val=[10, 11, 12, 13, 14],
+        pps=[1, 2, 3, 4, 5],
+        flags=[1, 0, 1, 1, 0],
+        use_flags=True,
+    )
+
+    out, code = ts.rmrange(59999.0, 60000.000020)
+
+    assert code == 2
+    assert out is not None
+    assert np.array_equal(out.mjd_tab, np.array([60000.000030, 60000.000040]))
+    assert np.array_equal(out.val_tab, np.array([13, 14], dtype=float))
+    assert np.array_equal(out.pps_tab, np.array([4, 5]))
+    assert np.array_equal(out.flags, np.array([1, 0]))
+    assert out.use_flags is True
+
+
+def test_rmrange_remove_right_part_with_flags():
+    ts = TSerie(
+        mjd=[
+            60000.000000,
+            60000.000010,
+            60000.000020,
+            60000.000030,
+            60000.000040,
+        ],
+        val=[10, 11, 12, 13, 14],
+        pps=[1, 2, 3, 4, 5],
+        flags=[1, 0, 1, 1, 0],
+        use_flags=True,
+    )
+
+    out, code = ts.rmrange(60000.000020, 60001.0)
+
+    assert code == 3
+    assert out is not None
+    assert np.array_equal(out.mjd_tab, np.array([60000.000000, 60000.000010]))
+    assert np.array_equal(out.val_tab, np.array([10, 11], dtype=float))
+    assert np.array_equal(out.pps_tab, np.array([1, 2]))
+    assert np.array_equal(out.flags, np.array([1, 0]))
+    assert out.use_flags is True
+
+# rmindexes
+
+def test_rm_indexes_without_flags():
+    ts = TSerie(
+        mjd=[1, 2, 3, 4, 5],
+        val=[10, 11, 12, 13, 14],
+        pps=[1, 2, 3, 4, 5],
+        use_flags=False,
+    )
+
+    ts.rm_indexes([1, 3])
+
+    assert np.array_equal(ts.mjd_tab, np.array([1, 3, 5], dtype=float))
+    assert np.array_equal(ts.val_tab, np.array([10, 12, 14], dtype=float))
+    assert np.array_equal(ts.pps_tab, np.array([1, 3, 5]))
+    assert ts.flags is None
+    assert ts.len == 3
+
+
+def test_rm_indexes_with_flags():
+    ts = TSerie(
+        mjd=[1, 2, 3, 4, 5],
+        val=[10, 11, 12, 13, 14],
+        pps=[1, 2, 3, 4, 5],
+        flags=[1, 0, 1, 1, 0],
+        use_flags=True,
+    )
+
+    ts.rm_indexes([1, 3])
+
+    assert np.array_equal(ts.mjd_tab, np.array([1, 3, 5], dtype=float))
+    assert np.array_equal(ts.val_tab, np.array([10, 12, 14], dtype=float))
+    assert np.array_equal(ts.pps_tab, np.array([1, 3, 5]))
+    assert np.array_equal(ts.flags, np.array([1, 1, 0]))
+    assert ts.len == 3
+    assert ts.use_flags is True
+
+
+def test_rm_indexes_none_does_nothing():
+    ts = TSerie(
+        mjd=[1, 2, 3],
+        val=[10, 11, 12],
+        pps=[1, 2, 3],
+        flags=[1, 0, 1],
+        use_flags=True,
+    )
+
+    ts.rm_indexes(None)
+
+    assert np.array_equal(ts.mjd_tab, np.array([1, 2, 3], dtype=float))
+    assert np.array_equal(ts.val_tab, np.array([10, 11, 12], dtype=float))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 3]))
+    assert np.array_equal(ts.flags, np.array([1, 0, 1]))
+    assert ts.len == 3
+
+
+def test_rm_indexes_single_index():
+    ts = TSerie(
+        mjd=[1, 2, 3, 4],
+        val=[10, 11, 12, 13],
+        pps=[1, 2, 3, 4],
+        flags=[1, 0, 1, 0],
+        use_flags=True,
+    )
+
+    ts.rm_indexes(2)
+
+    assert np.array_equal(ts.mjd_tab, np.array([1, 2, 4], dtype=float))
+    assert np.array_equal(ts.val_tab, np.array([10, 11, 13], dtype=float))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 4]))
+    assert np.array_equal(ts.flags, np.array([1, 0, 0]))
+    assert ts.len == 3
+
+# time diff to freq
+
+import numpy as np
+from timanda.tserie import TSerie
+
+
+def test_time_diff_to_freq_diff_without_fill_last_point():
+    ts = TSerie(
+        mjd=[1.0, 1.00001, 1.00002],
+        val=[10.0, 20.0, 50.0],
+        pps=[1, 2, 3],
+        use_flags=False,
+    )
+
+    ts.time_diff_to_freq_diff(fill_last_point=False)
+
+    delta_s = 0.00001 * 86400.0
+    expected_val = np.array([
+        (20.0 - 10.0) / delta_s,
+        (50.0 - 20.0) / delta_s,
+    ])
+
+    assert np.array_equal(ts.mjd_tab, np.array([1.0, 1.00001]))
+    assert np.allclose(ts.val_tab, expected_val)
+    assert np.array_equal(ts.pps_tab, np.array([1, 2]))
+    assert ts.flags is None
+    assert ts.len == 2
+
+
+def test_time_diff_to_freq_diff_with_fill_last_point():
+    ts = TSerie(
+        mjd=[1.0, 1.00001, 1.00002],
+        val=[10.0, 20.0, 50.0],
+        pps=[1, 2, 3],
+        use_flags=False,
+    )
+
+    ts.time_diff_to_freq_diff(fill_last_point=True)
+
+    delta_s = 0.00001 * 86400.0
+    f1 = (20.0 - 10.0) / delta_s
+    f2 = (50.0 - 20.0) / delta_s
+
+    assert np.array_equal(ts.mjd_tab, np.array([1.0, 1.00001, 1.00002]))
+    assert np.allclose(ts.val_tab, np.array([f1, f2, f2]))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 3]))
+    assert ts.flags is None
+    assert ts.len == 3
+
+
+def test_time_diff_to_freq_diff_with_flags():
+    ts = TSerie(
+        mjd=[1.0, 1.00001, 1.00002, 1.00003],
+        val=[10.0, 20.0, 50.0, 80.0],
+        pps=[1, 2, 3, 4],
+        flags=[1, 0, 1, 0],
+        use_flags=True,
+    )
+
+    ts.time_diff_to_freq_diff(fill_last_point=True)
+
+    delta_s = 0.00001 * 86400.0
+    f1 = (20.0 - 10.0) / delta_s
+    f2 = (50.0 - 20.0) / delta_s
+    f3 = (80.0 - 50.0) / delta_s
+
+    assert np.array_equal(ts.mjd_tab, np.array([1.0, 1.00001, 1.00002, 1.00003]))
+    assert np.allclose(ts.val_tab, np.array([f1, f2, f3, f3]))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 3, 4]))
+    assert np.array_equal(ts.flags, np.array([1, 0, 1, 0]))
+    assert ts.use_flags is True
+    assert ts.len == 4
+
+
+def test_time_diff_to_freq_diff_with_flags_without_fill_last_point():
+    ts = TSerie(
+        mjd=[1.0, 1.00001, 1.00002, 1.00003],
+        val=[10.0, 20.0, 50.0, 80.0],
+        pps=[1, 2, 3, 4],
+        flags=[1, 0, 1, 0],
+        use_flags=True,
+    )
+
+    ts.time_diff_to_freq_diff(fill_last_point=False)
+
+    delta_s = 0.00001 * 86400.0
+    f1 = (20.0 - 10.0) / delta_s
+    f2 = (50.0 - 20.0) / delta_s
+    f3 = (80.0 - 50.0) / delta_s
+
+    assert np.array_equal(ts.mjd_tab, np.array([1.0, 1.00001, 1.00002]))
+    assert np.allclose(ts.val_tab, np.array([f1, f2, f3]))
+    assert np.array_equal(ts.pps_tab, np.array([1, 2, 3]))
+    assert np.array_equal(ts.flags, np.array([1, 0, 1]))
+    assert ts.use_flags is True
+    assert ts.len == 3
+
+
+def test_time_diff_to_freq_diff_too_short_series():
+    ts = TSerie(
+        mjd=[1.0],
+        val=[10.0],
+        pps=[1],
+        flags=[1],
+        use_flags=True,
+    )
+
+    ts.time_diff_to_freq_diff(fill_last_point=True)
+
+    assert np.array_equal(ts.mjd_tab, np.array([1.0]))
+    assert np.array_equal(ts.val_tab, np.array([10.0]))
+    assert np.array_equal(ts.pps_tab, np.array([1]))
+    assert np.array_equal(ts.flags, np.array([1]))
+    assert ts.len == 1
+
+# npz
+
+def test_to_npz_payload_without_flags():
+    ts = TSerie(
+        label="Test Series",
+        mjd=[1.0, 2.0, 3.0],
+        val=[10.0, 20.0, 30.0],
+        pps=[1, 2, 3],
+        use_flags=False,
+    )
+
+    payload = ts.to_npz_payload()
+
+    assert set(payload.keys()) == {"mjd", "val", "pps", "label", "use_flags"}
+
+    assert np.array_equal(payload["mjd"], np.array([1.0, 2.0, 3.0], dtype=np.float64))
+    assert np.array_equal(payload["val"], np.array([10.0, 20.0, 30.0], dtype=np.float64))
+    assert np.array_equal(payload["pps"], np.array([1, 2, 3], dtype=np.int32))
+    assert payload["label"] == np.array("Test Series", dtype=np.str_)
+    assert payload["use_flags"] == np.array(False, dtype=np.bool_)
+
+    assert "flags" not in payload
+
+
+def test_to_npz_payload_with_flags():
+    ts = TSerie(
+        label="Flags Series",
+        mjd=[1.0, 2.0, 3.0],
+        val=[10.0, 20.0, 30.0],
+        pps=[1, 2, 3],
+        flags=[1, 0, 1],
+        use_flags=True,
+    )
+
+    payload = ts.to_npz_payload()
+
+    assert set(payload.keys()) == {"mjd", "val", "pps", "label", "use_flags", "flags"}
+
+    assert np.array_equal(payload["mjd"], np.array([1.0, 2.0, 3.0], dtype=np.float64))
+    assert np.array_equal(payload["val"], np.array([10.0, 20.0, 30.0], dtype=np.float64))
+    assert np.array_equal(payload["pps"], np.array([1, 2, 3], dtype=np.int32))
+    assert np.array_equal(payload["flags"], np.array([1, 0, 1], dtype=np.int32))
+    assert payload["label"] == np.array("Flags Series", dtype=np.str_)
+    assert payload["use_flags"] == np.array(True, dtype=np.bool_)
+
+
+def test_to_npz_payload_with_prefix():
+    ts = TSerie(
+        label="Prefixed",
+        mjd=[1.0, 2.0],
+        val=[10.0, 20.0],
+        pps=[1, 2],
+        flags=[1, 0],
+        use_flags=True,
+    )
+
+    payload = ts.to_npz_payload(prefix="seg0_")
+
+    assert set(payload.keys()) == {
+        "seg0_mjd",
+        "seg0_val",
+        "seg0_pps",
+        "seg0_label",
+        "seg0_use_flags",
+        "seg0_flags",
+    }
+
+    assert np.array_equal(payload["seg0_mjd"], np.array([1.0, 2.0], dtype=np.float64))
+    assert np.array_equal(payload["seg0_val"], np.array([10.0, 20.0], dtype=np.float64))
+    assert np.array_equal(payload["seg0_pps"], np.array([1, 2], dtype=np.int32))
+    assert np.array_equal(payload["seg0_flags"], np.array([1, 0], dtype=np.int32))
+    assert payload["seg0_label"] == np.array("Prefixed", dtype=np.str_)
+    assert payload["seg0_use_flags"] == np.array(True, dtype=np.bool_)
+
+
+def test_to_npz_payload_empty_label():
+    ts = TSerie(
+        label="",
+        mjd=[1.0],
+        val=[10.0],
+        pps=[1],
+        use_flags=False,
+    )
+
+    payload = ts.to_npz_payload()
+
+    assert payload["label"] == np.array("", dtype=np.str_)
+    assert payload["use_flags"] == np.array(False, dtype=np.bool_)
+
+
+def test_to_npz_payload_preserves_flags_even_if_use_flags_false():
+    ts = TSerie(
+        label="Stored Flags",
+        mjd=[1.0, 2.0, 3.0],
+        val=[10.0, 20.0, 30.0],
+        pps=[1, 2, 3],
+        flags=[1, 0, 1],
+        use_flags=False,
+    )
+
+    payload = ts.to_npz_payload()
+
+    assert "flags" in payload
+    assert np.array_equal(payload["flags"], np.array([1, 0, 1], dtype=np.int32))
+    assert payload["use_flags"] == np.array(False, dtype=np.bool_)

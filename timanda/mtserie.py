@@ -28,7 +28,8 @@ class MTSerie:
         plot_ref_val: Union[int, float] = 0,
         mjd: Optional[list[float]] = None,
         val: Optional[list[float]] = None,
-        split: bool = False
+        split: bool = False,
+        use_flags: bool = False
     ) -> None:
         self.label: str = label
         self.plot_label: str = plot_label
@@ -1016,7 +1017,7 @@ class MTSerie:
         save_fn(path, **payload)
         return path
     
-    def append_npz(self, path, *, sort_after=True):
+    def append_npz(self, path, *, sort_after=False):
 
         path = Path(path)
 

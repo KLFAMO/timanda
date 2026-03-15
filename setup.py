@@ -12,5 +12,6 @@ setup(
         'pandas>=2.2.1',
         'pyqtgraph>=0.13.1',
         'reportlab',
+        'PyQt5',
     ],
 )
