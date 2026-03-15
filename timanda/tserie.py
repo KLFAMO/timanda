@@ -934,3 +934,18 @@ class TSerie:
             payload[f"{prefix}flags"] = np.asarray(self.flags, dtype=np.int32)
 
         return payload
+
+    def set_flags_in_range(self, from_mjd, to_mjd, flag_value):
+        """
+        Sets flag_value for all points in the given MJD range.
+        """
+        if from_mjd > to_mjd:
+            from_mjd, to_mjd = to_mjd, from_mjd
+
+        self.use_flags = True
+
+        if self.flags is None:
+            self._create_flags_list()
+
+        mask = (self.mjd_tab >= from_mjd) & (self.mjd_tab <= to_mjd)
+        self.flags[mask] = flag_value

@@ -11,6 +11,7 @@ s2mjd = 1/(60*60*24)  # seconds to MJD conversion factor
 from timanda.tserie import mjd2s
 import json
 from pathlib import Path
+import logging
 
 
 class MTSerie:
@@ -21,33 +22,34 @@ class MTSerie:
     def __init__(
         self,
         label: str = '',
-        tseries: Optional[list[TSerie]]=None,
+        tseries: Optional[list[TSerie]] = None,
         color: str = 'green',
         txtFileName: Optional[str] = None,
         plot_label: str = '',
         plot_ref_val: Union[int, float] = 0,
         mjd: Optional[list[float]] = None,
         val: Optional[list[float]] = None,
-        split: bool = False,
-        use_flags: bool = False
+        flags: Optional[list[int]] = None,
+        use_flags: bool = False,
+        split: bool = False
     ) -> None:
         self.label: str = label
         self.plot_label: str = plot_label
         self.plot_ref_val: Union[int, float] = plot_ref_val
         self.dtab: list[TSerie] = []
         self.color: str = color
+        self.use_flags: bool = use_flags
 
-        # If text file name is provided, import data from the file
         if txtFileName:
             self.importFromTxtFile(txtFileName)
-        # If a TSerie object is provided, add it to the MTSerie
         elif tseries:
             for tserie in tseries:
                 self.add_TSerie(tserie)
-        # If mjd and val arrays are provided, create a TSerie and add it
         elif mjd is not None and val is not None:
-            ts = TSerie(mjd=mjd, val=val)
+            ts = TSerie(mjd=mjd, val=val, flags=flags, use_flags=use_flags)
             self.add_TSerie(ts)
+
+        self._sync_use_flags()
 
         if split:
             self.split()
@@ -68,7 +70,20 @@ class MTSerie:
                     mjd_t.append(float(parts[0]))
                     val_t.append(float(parts[1]))
         
-        self.add_TSerie(TSerie(mjd=mjd_t, val=val_t))
+        self.add_TSerie(TSerie(
+            mjd=mjd_t,
+            val=val_t,
+            use_flags=self.use_flags,
+        ))
+
+
+    def _sync_use_flags(self):
+        for ts in self.dtab:
+            ts.use_flags = self.use_flags
+
+            if self.use_flags and ts.flags is None:
+                ts._create_flags_list()
+
 
     def __str__(self):
         s = f"MTSerie {self.label}:\n"
@@ -203,30 +218,50 @@ class MTSerie:
         fit = np.polyfit(self.mjd_tab(), self.val_tab(), 1)
         return fit[0]
 
-    def add_TSerie(self, ser):
+
+    def add_TSerie(self, ser: TSerie):
+        ser.use_flags = self.use_flags
+
+        if self.use_flags and ser.flags is None:
+            ser._create_flags_list()
+
         self.dtab.append(ser)
 
+
     def add_mjdf_data(self, mjd, f):
-        tmp = TSerie(mjd=mjd, val=f)
-        self.dtab.append(tmp)
+        tmp = TSerie(mjd=mjd, val=f, use_flags=self.use_flags)
+        self.add_TSerie(tmp)  
+
 
     def add_mjdf_from_file(self, file_name):
         raw = np.load(file_name, allow_pickle=True)
+
+        if raw.ndim != 2 or raw.shape[1] < 2:
+            raise ValueError("Input file must contain a 2D array with at least two columns: mjd and val")
+
         self.add_mjdf_data(raw[:, 0], raw[:, 1])
+
 
     def add_mjdf_from_datfile(self, file_name, delimiter=' ', skiprows=0):
         try:
             raw = np.loadtxt(file_name, delimiter=delimiter, skiprows=skiprows)
+
             if raw.size == 0:
-                print(f"File '{file_name}' is empty.")
+                logging.warning(f"File '{file_name}' is empty.")
                 return
+
+            raw = np.atleast_2d(raw)
+
             self.add_mjdf_data(raw[:, 0], raw[:, 1])
+
         except FileNotFoundError:
-            print(f"File '{file_name}' doesn't exist.")
+            logging.error(f"File '{file_name}' doesn't exist.")
+
         except ValueError as e:
-            print(f"Error while reading file '{file_name}': {e}")
+            logging.error(f"Error while reading file '{file_name}': {e}")
+
         except Exception as e:
-            print(f"Unexpected error during reading file '{file_name}': {e}")
+            logging.error(f"Unexpected error during reading file '{file_name}': {e}")
 
 
     def plot(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
@@ -289,7 +324,15 @@ class MTSerie:
         b.plot(a, errorbars=True, grid=True)
         b.show()
 
+
     def sew(self, grid_s=1):
+        """
+        Stitches values from all TSerie segments into a single NumPy array.
+
+        Returns:
+            numpy.ndarray: Array containing values from all TSerie objects in `dtab`.
+        """
+
         g = grid_s*s2mjd
         out = []
         for x in self.dtab:
@@ -297,13 +340,24 @@ class MTSerie:
                 out.append(x.mjd2val(mjd))
         return np.array(out)
 
+
     def split(self, min_gap_s=8):
+        """
+        Splits all TSerie objects in `dtab` based on time gaps.
+
+        Each TSerie is split using `TSerie.split()`. The resulting segments
+        replace the original series in `self.dtab`.
+
+        Args:
+            min_gap_s (float): Minimum gap in seconds used to split segments.
+        """
+
         tmp_tab = []
         for a in self.dtab:
             spl = a.split(min_gap_s)
-            for s in spl:
-                tmp_tab.append(s)
+            tmp_tab.extend(spl)
         self.dtab = tmp_tab
+
 
     def rm_dc_each(self):
         for x in self.dtab:
@@ -379,7 +433,7 @@ class MTSerie:
             fN = fN+1
         if (ft == tt and fN is None):
             return None
-        out = MTSerie()
+        out = MTSerie(use_flags=self.use_flags)
         if ft == -1:
             ft = 0
         if tt == -1:
@@ -397,8 +451,11 @@ class MTSerie:
         return out
 
     def getrange_on_self(self, fmjd, tmjd):
+        """
+        Keeps only the data in the range [fmjd, tmjd] by removing data outside the range.
+        """
         self.rmrange(0, fmjd)
-        self.rmrange(tmjd, 1e6)
+        self.rmrange(tmjd, np.inf)
 
     def rmrange(self, fmjd, tmjd):
         ft, fN = self.mjd2tabNoandindex(fmjd)
@@ -417,7 +474,7 @@ class MTSerie:
             (a, b) = x.rmrange(fmjd, tmjd)
             if b == 1:
                 del self.dtab[i]
-            if b == 2 or b == 3:
+            if b in (2, 3):
                 self.dtab[i] = a
             if b == 4:
                 del self.dtab[i]
@@ -968,6 +1025,7 @@ class MTSerie:
             "schema": "timanda-tsplot",
             "version": 1,
             "type": "MTS",
+            "use_flags": self.use_flags,
             "segments": segments,
         }
 
@@ -984,13 +1042,13 @@ class MTSerie:
         return json.dumps(self.to_dict(), ensure_ascii=False)
     
     def dump_npz(
-        self,
-        path,
-        *,
-        compress=False,
-        meta=None,
-        overwrite=True,
-    ):
+            self,
+            path,
+            *,
+            compress=False,
+            meta=None,
+            overwrite=True,
+        ):
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1002,6 +1060,7 @@ class MTSerie:
 
         payload = {
             "ts_count": np.array(len(self.dtab), dtype=np.int64),
+            "mts_use_flags": np.array(self.use_flags, dtype=np.bool_),
             "meta_txt": np.array(
                 json.dumps(meta, ensure_ascii=False, sort_keys=True) if meta else "",
                 dtype=np.str_,
@@ -1009,10 +1068,7 @@ class MTSerie:
         }
 
         for i, ts in enumerate(self.dtab):
-            payload[f"ts{i}_label"] = np.array(ts.label or "", dtype=np.str_)
-            payload[f"ts{i}_mjd"] = np.asarray(ts.mjd_tab, dtype=np.float64)
-            payload[f"ts{i}_val"] = np.asarray(ts.val_tab, dtype=np.float64)
-            payload[f"ts{i}_pps"] = np.asarray(ts.pps_tab, dtype=np.int32)
+            payload.update(ts.to_npz_payload(prefix=f"ts{i}_"))
 
         save_fn(path, **payload)
         return path
@@ -1022,16 +1078,28 @@ class MTSerie:
         path = Path(path)
 
         with np.load(path, allow_pickle=False) as z:
+
+            # jeśli plik zawiera mts_use_flags to synchronizujemy
+            if "mts_use_flags" in z:
+                self.use_flags = bool(z["mts_use_flags"])
+
             ts_count = int(z["ts_count"])
 
             for i in range(ts_count):
+
+                use_flags = bool(z[f"ts{i}_use_flags"]) if f"ts{i}_use_flags" in z else False
+                flags = z[f"ts{i}_flags"] if f"ts{i}_flags" in z else None
+
                 ts = TSerie(
                     label=str(z[f"ts{i}_label"]),
                     mjd=z[f"ts{i}_mjd"].tolist(),
                     val=z[f"ts{i}_val"].tolist(),
                     pps=z[f"ts{i}_pps"].tolist(),
+                    flags=flags.tolist() if flags is not None else None,
+                    use_flags=use_flags,
                 )
-                self.dtab.append(ts)
+
+                self.add_TSerie(ts)
 
         if sort_after:
             self.dtab.sort(
@@ -1039,4 +1107,17 @@ class MTSerie:
             )
 
         return ts_count
+
+
+    def set_flags_in_range(self, from_mjd, to_mjd, flag_value):
+        """
+        Sets flag_value for all points in the given MJD range.
+        """
+        if from_mjd > to_mjd:
+            from_mjd, to_mjd = to_mjd, from_mjd
+
+        self.use_flags = True
+
+        for ts in self.dtab:
+            ts.set_flags_in_range(from_mjd, to_mjd, flag_value)
 

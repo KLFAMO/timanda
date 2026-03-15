@@ -52,3 +52,122 @@ def test_rm_nans():
     assert np.array_equal(ts.mjd_tab, expected_mjd), "MJD values do not match expected results"
     assert np.array_equal(ts.val_tab, expected_val), "VAL values do not match expected results"
     assert np.array_equal(ts.pps_tab, expected_pps), "PPS values do not match expected results"
+
+# split
+
+def test_mtserie_split_with_flags():
+    mjd = [
+        60000.000000,
+        60000.000010,
+        60000.000020,
+        60000.000200,  # gap
+        60000.000210,
+        60000.000220,
+    ]
+
+    val = [10, 11, 12, 13, 14, 15]
+    flags = [1, 0, 1, 1, 0, 1]
+
+    ts = TSerie(
+        mjd=mjd,
+        val=val,
+        flags=flags,
+        use_flags=True
+    )
+
+    mts = MTSerie(tseries=[ts], use_flags=True)
+
+    mts.split(min_gap_s=8)
+
+    assert len(mts.dtab) == 2
+
+    ts1 = mts.dtab[0]
+    ts2 = mts.dtab[1]
+
+    assert ts1.use_flags is True
+    assert ts2.use_flags is True
+
+    assert np.array_equal(ts1.mjd_tab, np.array(mjd[:3]))
+    assert np.array_equal(ts1.val_tab, np.array(val[:3], dtype=float))
+    assert np.array_equal(ts1.flags, np.array(flags[:3]))
+
+    assert np.array_equal(ts2.mjd_tab, np.array(mjd[3:]))
+    assert np.array_equal(ts2.val_tab, np.array(val[3:], dtype=float))
+    assert np.array_equal(ts2.flags, np.array(flags[3:]))
+
+def test_mtserie_split_without_flags():
+    mjd = [
+        60000.0,
+        60000.00001,
+        60000.00002,
+        60000.00020,
+        60000.00021,
+    ]
+
+    val = [1, 2, 3, 4, 5]
+
+    ts = TSerie(mjd=mjd, val=val)
+
+    mts = MTSerie(tseries=[ts])
+
+    mts.split(min_gap_s=8)
+
+    assert len(mts.dtab) == 2
+
+    assert mts.dtab[0].flags is None
+    assert mts.dtab[1].flags is None
+
+# getrange
+
+def test_mtserie_getrange_flags():
+    mjd = [1,2,3,4,5]
+    val = [10,11,12,13,14]
+    flags = [1,0,1,1,0]
+
+    ts = TSerie(mjd=mjd, val=val, flags=flags, use_flags=True)
+    mts = MTSerie(tseries=[ts], use_flags=True)
+
+    out = mts.getrange(2,4)
+
+    assert out.use_flags is True
+    assert len(out.dtab) == 1
+    assert np.array_equal(out.dtab[0].flags, np.array([0,1,1]))
+
+
+def test_mtserie_rmrange_with_flags():
+    mjd = [1,2,3,4,5,6]
+    val = [10,11,12,13,14,15]
+    flags = [1,0,1,1,0,1]
+
+    ts = TSerie(mjd=mjd, val=val, flags=flags, use_flags=True)
+    mts = MTSerie(tseries=[ts], use_flags=True)
+
+    mts.rmrange(2.5,4.5)
+
+    assert len(mts.dtab) == 2
+    assert np.array_equal(mts.dtab[0].flags, np.array([1,0]))
+    assert np.array_equal(mts.dtab[1].flags, np.array([0,1]))
+
+#-----
+
+def test_mtserie_set_flags_in_range():
+    ts1 = TSerie(
+        mjd=[1.0, 2.0, 3.0, 4.0],
+        val=[10.0, 11.0, 12.0, 13.0],
+    )
+    ts2 = TSerie(
+        mjd=[5.0, 6.0, 7.0],
+        val=[20.0, 21.0, 22.0],
+    )
+
+    mts = MTSerie(tseries=[ts1, ts2], use_flags=False)
+
+    mts.set_flags_in_range(2.5, 6.5, 0)
+
+    assert mts.use_flags is True
+
+    assert np.array_equal(mts.dtab[0].flags, np.array([1, 1, 0, 0]))
+    assert np.array_equal(mts.dtab[1].flags, np.array([0, 0, 1]))
+
+    assert mts.dtab[0].use_flags is True
+    assert mts.dtab[1].use_flags is True
