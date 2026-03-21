@@ -286,6 +286,51 @@ class MTSerie:
                 plt.ylabel(self.plot_label)
         if show == 1:
             plt.show()
+    
+
+
+    def plotf(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
+             nolabels=False, time_unit='mjd'):
+        for x in self.dtab:
+            if time_unit == 'mjd':
+                xs = x.mjd_tab
+            elif time_unit == 's':
+                xs = (x.mjd_tab - x.mjd_tab[0]) * 24 * 60 * 60
+
+            ys = x.val_tab - self.plot_ref_val
+
+            if x.flags is not None and len(x.flags) == len(xs):
+                mask1 = x.flags == 1
+                mask0 = x.flags == 0
+
+                if ax is None:
+                    if np.any(mask1):
+                        plt.plot(xs[mask1], ys[mask1], color='green', marker=marker,
+                                 linestyle=linestyle, zorder=zorder)
+                    if np.any(mask0):
+                        plt.plot(xs[mask0], ys[mask0], color='red', marker=marker,
+                                 linestyle=linestyle, zorder=zorder)
+                else:
+                    if np.any(mask1):
+                        ax.plot(xs[mask1], ys[mask1], color='green', marker=marker,
+                                linestyle=linestyle, zorder=zorder)
+                    if np.any(mask0):
+                        ax.plot(xs[mask0], ys[mask0], color='red', marker=marker,
+                                linestyle=linestyle, zorder=zorder)
+            else:
+                if color == '':
+                    color = self.color
+                if ax is None:
+                    plt.plot(xs, ys, color=color, marker=marker,
+                             linestyle=linestyle, zorder=zorder)
+                else:
+                    ax.plot(xs, ys, color=color, marker=marker,
+                            linestyle=linestyle, zorder=zorder)
+
+            if not nolabels:
+                plt.ylabel(self.plot_label)
+        if show == 1:
+            plt.show()
 
     def hist(self, bins=10, orientation='vertical'):
         v = self.val_tab()
