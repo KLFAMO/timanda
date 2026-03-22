@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 s2mjd = 1/(24*60*60)  # seconds to MJD
 from timanda.utils import import_data_to_df_rocit_gnss, two_mts_equal_mjd, import_data_to_df_rocit_oc
 from timanda.utils import OPERATIONS
@@ -94,7 +95,7 @@ class GTserie:
         self.mts_dict[mts_name].plot()
 
     def plot(self, fig=None, axs=None, figsize=(7, 7), mts_names=None, show=1, zorder=1,
-             time_unit='mjd'):
+             time_unit='mjd', save_filename=None):
         if not mts_names:
             mts_names = self.mts_dict
         fig, axs = plt.subplots(len(mts_names),1,  constrained_layout=True, sharex=True, figsize=figsize)
@@ -105,6 +106,14 @@ class GTserie:
                 self.mts_dict[mts_name].plot_label = mts_name
             axs[i].set_ylabel(self.mts_dict[mts_name].plot_label)
         plt.tight_layout()
+        if save_filename:
+            _, ext = os.path.splitext(save_filename)
+            if ext.lower() == '.png':
+                plt.savefig(save_filename, format='png')
+            elif ext.lower() == '.pdf':
+                plt.savefig(save_filename, format='pdf')
+            else:
+                plt.savefig(save_filename)
         if show:
             plt.show()
         return fig, axs
