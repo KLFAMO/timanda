@@ -1166,3 +1166,10 @@ class MTSerie:
         for ts in self.dtab:
             ts.set_flags_in_range(from_mjd, to_mjd, flag_value)
 
+
+    def flag_filter(self, allowed_flag: int = 1):
+        """
+        Keeps only points with flags in allowed_flags. Removes all other points.
+        """
+        for ts in self.dtab:
+            ts.flag_filter(allowed_flag=allowed_flag)

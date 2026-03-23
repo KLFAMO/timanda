@@ -949,3 +949,26 @@ class TSerie:
 
         mask = (self.mjd_tab >= from_mjd) & (self.mjd_tab <= to_mjd)
         self.flags[mask] = flag_value
+    
+
+    def flag_filter(self, allowed_flag: int = 1):
+        """
+        Returns a new TSerie containing only points with flags in allowed_flags.
+        Params:
+            allowed_flags (set or list): set or list of allowed flag values
+            make_copy (bool): if True, returns a new TSerie, otherwise modifies in place
+        Returns:
+            TSerie: filtered TSerie
+        """
+        if self.flags is None:
+            return self
+
+        mask = np.isin(self.flags, allowed_flag)
+        
+        self.mjd_tab = self.mjd_tab[mask]
+        self.val_tab = self.val_tab[mask]
+        self.pps_tab = self.pps_tab[mask]
+        if self.flags is not None:
+            self.flags = self.flags[mask]
+        self.len = len(self.mjd_tab)
+        self.calc_tab()
