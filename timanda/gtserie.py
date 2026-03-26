@@ -338,6 +338,7 @@ class GTserie:
             g = self
 
         common_rm_mask = None
+        mts_lengths = {}  # Store the length of each aligned series
 
         # First pass: align each series and build the common removal mask
         for mts_name in self.mts_dict:
@@ -353,8 +354,16 @@ class GTserie:
                 hold_last=hold_last,
             )
 
+            # Store the length of this aligned series
+            mts_lengths[mts_name] = len(rm_mask)
+
             # Combine masks (logical OR): remove if missing in ANY series
-            common_rm_mask = (common_rm_mask | rm_mask) if common_rm_mask is not None else rm_mask.copy()
+            if common_rm_mask is not None:
+                # Ensure same length by trimming to minimum
+                min_len = min(len(common_rm_mask), len(rm_mask))
+                common_rm_mask = common_rm_mask[:min_len] | rm_mask[:min_len]
+            else:
+                common_rm_mask = rm_mask.copy()
 
             # Store aligned series
             if new_gts:
@@ -365,8 +374,18 @@ class GTserie:
                 g.mts_dict[mts_name] = tmp
 
         # Second pass: remove common missing points from all series
-        for mts_name in g.mts_dict:
-            g.mts_dict[mts_name].rm_indexes([common_rm_mask])
+        # Trim series to common mask length if needed and remove masked points
+        if common_rm_mask is not None:
+            common_len = len(common_rm_mask)
+            for mts_name in g.mts_dict:
+                # Trim if series is longer than mask
+                mts_len = mts_lengths.get(mts_name, common_len)
+                if mts_len > common_len:
+                    g.mts_dict[mts_name].rm_indexes(
+                        np.arange(common_len, mts_len)
+                    )
+                # Remove masked points
+                g.mts_dict[mts_name].rm_indexes([common_rm_mask])
 
         return g, common_rm_mask
 
