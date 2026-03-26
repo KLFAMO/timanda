@@ -275,6 +275,7 @@ class MTSerie:
             if color == '':
                 color = self.color
             if ax is None:
+                plt.figure()
                 plt.plot(xs, x.val_tab-self.plot_ref_val,
                           color=color, marker=marker,
                          linestyle=linestyle, zorder=zorder)
@@ -304,6 +305,7 @@ class MTSerie:
                 mask0 = x.flags == 0
 
                 if ax is None:
+                    plt.figure()
                     if np.any(mask1):
                         plt.plot(xs[mask1], ys[mask1], color='green', marker=marker,
                                  linestyle=linestyle, zorder=zorder)
