@@ -1175,6 +1175,21 @@ class MTSerie:
 
         for ts in self.dtab:
             ts.set_flags_in_range(from_mjd, to_mjd, flag_value)
+    
+    
+    def set_flags_in_area(self, x1, y1, x2, y2, flag_value):
+        """
+        Sets flag_value for all points in the given rectangular area.
+        """
+        if x1 > x2:
+            x1, x2 = x2, x1
+        if y1 > y2:
+            y1, y2 = y2, y1
+
+        self.use_flags = True
+
+        for ts in self.dtab:
+            ts.set_flags_in_area(x1, y1, x2, y2, flag_value)
 
 
     def flag_filter(self, allowed_flag: int = 1):

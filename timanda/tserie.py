@@ -965,6 +965,23 @@ class TSerie:
         mask = (self.mjd_tab >= from_mjd) & (self.mjd_tab <= to_mjd)
         self.flags[mask] = flag_value
     
+    def set_flags_in_area(self, x1, y1, x2, y2, flag_value):
+        """
+        Sets flag_value for all points in the given area.
+        """
+        if x1 > x2:
+            x1, x2 = x2, x1
+        if y1 > y2:
+            y1, y2 = y2, y1
+
+        self.use_flags = True
+
+        if self.flags is None:
+            self._create_flags_list()
+
+        mask = (self.mjd_tab >= x1) & (self.mjd_tab <= x2) & (self.val_tab >= y1) & (self.val_tab <= y2)
+        self.flags[mask] = flag_value
+    
 
     def flag_filter(self, allowed_flag: int = 1):
         """
