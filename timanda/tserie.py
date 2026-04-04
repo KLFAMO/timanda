@@ -548,6 +548,21 @@ class TSerie:
         if not get_indexes_only:
             self.rm_indexes(indexes_to_delete)
         return indexes_to_delete
+    
+    def rm_area(self, x1, y1, x2, y2, get_indexes_only=False):
+        indexes_to_delete = []
+        i = 0
+        x_min = min(x1, x2)
+        x_max = max(x1, x2)
+        y_min = min(y1, y2)
+        y_max = max(y1, y2)
+        while i < self.len:
+            if self.mjd_tab[i] >= x_min and self.mjd_tab[i] <= x_max and self.val_tab[i] >= y_min and self.val_tab[i] <= y_max:
+                indexes_to_delete.append(i)
+            i = i+1
+        if not get_indexes_only:
+            self.rm_indexes(indexes_to_delete)
+        return indexes_to_delete
 
     def time_shift(self, sec):
         self.mjd_tab = self.mjd_tab+sec/(24*60*60)

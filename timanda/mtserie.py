@@ -565,6 +565,14 @@ class MTSerie:
             )
         return indexes_in_mts_to_delete
 
+    def rm_area(self, x1, y1, x2, y2, get_indexes_only=False):
+        indexes_in_mts_to_delete = []
+        for x in self.dtab:
+            indexes_in_mts_to_delete.append(
+                x.rm_area(x1, y1, x2, y2, get_indexes_only=get_indexes_only)
+            )
+        return indexes_in_mts_to_delete
+
     def mean(self):
         if len(self.dtab) == 0:
             return None
