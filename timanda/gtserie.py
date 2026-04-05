@@ -7,6 +7,8 @@ from timanda.utils import OPERATIONS
 # from timanda.mtserie import MTSerie
 from timanda.tserie import TSerie
 from decimal import Decimal as D 
+from pathlib import Path
+import json
 
 class GTserie:
     """
@@ -24,6 +26,18 @@ class GTserie:
             f"{self.name}:\n"
             f"\tnumber of series: {self.number_of_mts}"
         )
+
+    def copy(self):
+        out = GTserie(self.name)
+
+        for mts_name, mts in self.mts_dict.items():
+            out.append_mtserie(
+                mts_name=mts_name,
+                mts=mts.copy(),
+                mjd_group=self.mjd_groups.get(mts_name, ""),
+            )
+
+        return out
 
     def append_mtserie(self, mts_name, mts, mjd_group=''):
         """
@@ -557,3 +571,151 @@ class GTserie:
 
                 f.write('\n')
         f.close()
+
+
+    def dump_npz(
+        self,
+        path,
+        *,
+        compress=False,
+        meta=None,
+        overwrite=True,
+    ):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if path.exists() and not overwrite:
+            return path
+
+        save_fn = np.savez_compressed if compress else np.savez
+
+        payload = {
+            "schema": np.array("cmpmaker-gts", dtype=np.str_),
+            "version": np.array(1, dtype=np.int64),
+            "gts_name": np.array(self.name if self.name is not None else "", dtype=np.str_),
+            "mts_count": np.array(len(self.mts_dict), dtype=np.int64),
+            "meta_txt": np.array(
+                json.dumps(meta, ensure_ascii=False, sort_keys=True) if meta else "",
+                dtype=np.str_,
+            ),
+        }
+
+        mts_names = list(self.mts_dict.keys())
+        payload["mts_names"] = np.array(mts_names, dtype=np.str_)
+
+        for i, mts_name in enumerate(mts_names):
+            mts = self.mts_dict[mts_name]
+            mjd_group = self.mjd_groups.get(mts_name, "")
+
+            payload[f"mts{i}_name"] = np.array(mts_name, dtype=np.str_)
+            payload[f"mts{i}_mjd_group"] = np.array(mjd_group, dtype=np.str_)
+
+            mts_payload = mts.to_npz_payload(prefix=f"mts{i}_")
+            payload.update(mts_payload)
+
+        save_fn(path, **payload)
+        return path
+
+
+    @classmethod
+    def load_npz(cls, path):
+        from pathlib import Path
+        import numpy as np
+        from timanda.mtserie import MTSerie
+
+        path = Path(path)
+
+        with np.load(path, allow_pickle=False) as z:
+            schema = str(z["schema"])
+            if schema != "cmpmaker-gts":
+                raise ValueError(f"Unsupported schema: {schema}")
+
+            name = str(z["gts_name"])
+            gts = cls(name=name)
+
+            mts_count = int(z["mts_count"])
+
+            for i in range(mts_count):
+                mts_name = str(z[f"mts{i}_name"])
+                mjd_group = str(z[f"mts{i}_mjd_group"])
+
+                mts = MTSerie.from_npz_payload(z, prefix=f"mts{i}_")
+
+                gts.append_mtserie(
+                    mts_name=mts_name,
+                    mts=mts,
+                    mjd_group=mjd_group,
+                )
+
+        return gts
+
+
+    def merged_with(self, other: "GTserie", *, sort_segments: bool = True) -> "GTserie":
+        """
+        Zwraca nowe GTserie będące sklejeniem self i other.
+
+        Reguły:
+        - jeśli mts_name jest w obu GTserie -> sklejamy odpowiadające MTSerie
+        - jeśli mts_name jest tylko w jednym -> kopiujemy je do wyniku
+        """
+        if not isinstance(other, GTserie):
+            raise TypeError(f"Expected GTserie, got {type(other).__name__}")
+
+        out = GTserie(name=f"{self.name}+{other.name}")
+
+        all_mts_names = set(self.mts_dict.keys()) | set(other.mts_dict.keys())
+
+        for mts_name in sorted(all_mts_names):
+            in_self = mts_name in self.mts_dict
+            in_other = mts_name in other.mts_dict
+
+            if in_self and in_other:
+                merged_mts = self.mts_dict[mts_name].merged_with(
+                    other.mts_dict[mts_name],
+                    sort_segments=sort_segments,
+                )
+                mjd_group = self.mjd_groups.get(
+                    mts_name,
+                    other.mjd_groups.get(mts_name, "")
+                )
+                out.append_mtserie(
+                    mts_name=mts_name,
+                    mts=merged_mts,
+                    mjd_group=mjd_group,
+                )
+
+            elif in_self:
+                out.append_mtserie(
+                    mts_name=mts_name,
+                    mts=self.mts_dict[mts_name].copy(),
+                    mjd_group=self.mjd_groups.get(mts_name, ""),
+                )
+
+            else:
+                out.append_mtserie(
+                    mts_name=mts_name,
+                    mts=other.mts_dict[mts_name].copy(),
+                    mjd_group=other.mjd_groups.get(mts_name, ""),
+                )
+
+        return out
+
+    def extend_from(self, other: "GTserie", *, sort_segments: bool = True) -> None:
+        """
+        Dokleja dane z other do self.
+        """
+        if not isinstance(other, GTserie):
+            raise TypeError(f"Expected GTserie, got {type(other).__name__}")
+
+        for mts_name, other_mts in other.mts_dict.items():
+            if mts_name in self.mts_dict:
+                self.mts_dict[mts_name].extend_from(
+                    other_mts,
+                    sort_segments=sort_segments,
+                )
+            else:
+                self.append_mtserie(
+                    mts_name=mts_name,
+                    mts=other_mts.copy(),
+                    mjd_group=other.mjd_groups.get(mts_name, ""),
+                )

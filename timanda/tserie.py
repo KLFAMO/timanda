@@ -107,6 +107,20 @@ class TSerie:
         else:
             return None
 
+    def copy(self):
+        kwargs = {
+            "label": self.label,
+            "mjd": self.mjd_tab.copy().tolist(),
+            "val": self.val_tab.copy().tolist(),
+            "pps": self.pps_tab.copy().tolist(),
+            "use_flags": self.use_flags,
+        }
+
+        if self.flags is not None:
+            kwargs["flags"] = self.flags.copy().tolist()
+
+        return TSerie(**kwargs)
+
     def __add__(self, b):
         return self._apply_operation(b, np.add)
 

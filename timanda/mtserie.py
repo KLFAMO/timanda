@@ -85,6 +85,21 @@ class MTSerie:
                 ts._create_flags_list()
 
 
+    def copy(self):
+        out = MTSerie(
+            label=self.label,
+            color=self.color,
+            plot_label=self.plot_label,
+            plot_ref_val=self.plot_ref_val,
+            use_flags=self.use_flags,
+        )
+
+        for ts in self.dtab:
+            out.add_TSerie(ts.copy())
+
+        return out
+
+
     def __str__(self):
         s = f"MTSerie {self.label}:\n"
         for x in self.dtab:
@@ -1163,6 +1178,76 @@ class MTSerie:
 
         return ts_count
 
+    # def to_npz_payload(self, prefix=""):
+    #     payload = {
+    #         f"{prefix}ts_count": np.array(len(self.dtab), dtype=np.int64),
+    #         f"{prefix}use_flags": np.array(self.use_flags, dtype=np.bool_),
+    #     }
+
+    #     for i, ts in enumerate(self.dtab):
+    #         payload.update(ts.to_npz_payload(prefix=f"{prefix}ts{i}_"))
+
+    #     return payload
+
+
+    def to_npz_payload(self, prefix=""):
+        payload = {
+            f"{prefix}ts_count": np.array(len(self.dtab), dtype=np.int64),
+            f"{prefix}use_flags": np.array(self.use_flags, dtype=np.bool_),
+            f"{prefix}label": np.array(self.label if self.label is not None else "", dtype=np.str_),
+            f"{prefix}plot_label": np.array(self.plot_label if self.plot_label is not None else "", dtype=np.str_),
+            f"{prefix}plot_ref_val": np.array(self.plot_ref_val, dtype=np.float64),
+            f"{prefix}color": np.array(self.color if self.color is not None else "green", dtype=np.str_),
+        }
+
+        for i, ts in enumerate(self.dtab):
+            payload.update(ts.to_npz_payload(prefix=f"{prefix}ts{i}_"))
+
+        return payload
+
+
+    @classmethod
+    def from_npz_payload(cls, z, prefix=""):
+        from timanda.tserie import TSerie
+
+        mts_use_flags = bool(z[f"{prefix}use_flags"]) if f"{prefix}use_flags" in z else False
+        mts_label = str(z[f"{prefix}label"]) if f"{prefix}label" in z else ""
+        mts_plot_label = str(z[f"{prefix}plot_label"]) if f"{prefix}plot_label" in z else ""
+        mts_plot_ref_val = float(z[f"{prefix}plot_ref_val"]) if f"{prefix}plot_ref_val" in z else 0.0
+        mts_color = str(z[f"{prefix}color"]) if f"{prefix}color" in z else "green"
+
+        mts = cls(
+            label=mts_label,
+            color=mts_color,
+            plot_label=mts_plot_label,
+            plot_ref_val=mts_plot_ref_val,
+            use_flags=mts_use_flags,
+        )
+
+        ts_count = int(z[f"{prefix}ts_count"])
+
+        for j in range(ts_count):
+            ts_prefix = f"{prefix}ts{j}_"
+
+            mjd = z[f"{ts_prefix}mjd"]
+            val = z[f"{ts_prefix}val"]
+            pps = z[f"{ts_prefix}pps"]
+            label = str(z[f"{ts_prefix}label"])
+            ts_use_flags = bool(z[f"{ts_prefix}use_flags"]) if f"{ts_prefix}use_flags" in z else False
+            flags = z[f"{ts_prefix}flags"] if f"{ts_prefix}flags" in z else None
+
+            ts = TSerie(
+                label=label,
+                mjd=mjd.tolist(),
+                val=val.tolist(),
+                pps=pps.tolist(),
+                flags=flags.tolist() if flags is not None else None,
+                use_flags=ts_use_flags,
+            )
+
+            mts.add_TSerie(ts)
+
+        return mts
 
     def set_flags_in_range(self, from_mjd, to_mjd, flag_value):
         """
@@ -1198,3 +1283,60 @@ class MTSerie:
         """
         for ts in self.dtab:
             ts.flag_filter(allowed_flag=allowed_flag)
+
+
+    def merged_with(self, other: "MTSerie", *, sort_segments: bool = True) -> "MTSerie":
+        """
+        Zwraca nowe MTSerie będące sklejeniem self i other.
+
+        Na start:
+        - kopiuje wszystkie TSerie z self
+        - kopiuje wszystkie TSerie z other
+        - opcjonalnie sortuje segmenty po pierwszym MJD
+        """
+        if not isinstance(other, MTSerie):
+            raise TypeError(f"Expected MTSerie, got {type(other).__name__}")
+
+        out = MTSerie(
+            label=self.label or other.label,
+            color=self.color,
+            plot_label=self.plot_label or other.plot_label,
+            plot_ref_val=self.plot_ref_val,
+            use_flags=self.use_flags or other.use_flags,
+        )
+
+        for ts in self.dtab:
+            out.add_TSerie(ts.copy())
+
+        for ts in other.dtab:
+            out.add_TSerie(ts.copy())
+
+        if sort_segments:
+            out.dtab.sort(
+                key=lambda ts: ts.mjd_tab[0] if len(ts.mjd_tab) > 0 else float("inf")
+            )
+
+        return out
+
+
+    def extend_from(self, other: "MTSerie", *, sort_segments: bool = True) -> None:
+        """
+        Dokleja segmenty z other do self.
+        """
+        if not isinstance(other, MTSerie):
+            raise TypeError(f"Expected MTSerie, got {type(other).__name__}")
+
+        self.use_flags = self.use_flags or other.use_flags
+
+        if not self.label:
+            self.label = other.label
+        if not self.plot_label:
+            self.plot_label = other.plot_label
+
+        for ts in other.dtab:
+            self.add_TSerie(ts.copy())
+
+        if sort_segments:
+            self.dtab.sort(
+                key=lambda ts: ts.mjd_tab[0] if len(ts.mjd_tab) > 0 else float("inf")
+            )
