@@ -121,6 +121,28 @@ class TSerie:
 
         return TSerie(**kwargs)
 
+    @classmethod
+    def generate_random(cls, start_mjd, end_mjd, dt_s, mean_val, std_val, label='random'):
+        """
+        Generate a TSerie with random data from start_mjd to end_mjd.
+
+        Parameters:
+        start_mjd (float): Starting MJD
+        end_mjd (float): Ending MJD
+        dt_s (float): Sampling period in seconds
+        mean_val (float): Mean value of the random data
+        std_val (float): Standard deviation of the random data
+        label (str): Label for the TSerie (default 'random')
+
+        Returns:
+        TSerie: A new TSerie instance with random data
+        """
+        duration_s = (end_mjd - start_mjd) * mjd2s
+        num_points = int(duration_s / dt_s) + 1
+        mjd = np.linspace(start_mjd, end_mjd, num_points)
+        val = np.random.normal(mean_val, std_val, num_points)
+        return cls(label=label, mjd=mjd, val=val)
+
     def __add__(self, b):
         return self._apply_operation(b, np.add)
 

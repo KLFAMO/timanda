@@ -1340,3 +1340,25 @@ class MTSerie:
             self.dtab.sort(
                 key=lambda ts: ts.mjd_tab[0] if len(ts.mjd_tab) > 0 else float("inf")
             )
+
+    @classmethod
+    def generate_random(cls, start_mjd, end_mjd, dt_s, mean_val, std_val, label='random', color='green', plot_label='', plot_ref_val=0):
+        """
+        Generate an MTSerie with a single random TSerie.
+
+        Parameters:
+        start_mjd (float): Starting MJD
+        end_mjd (float): Ending MJD
+        dt_s (float): Sampling period in seconds
+        mean_val (float): Mean value of the random data
+        std_val (float): Standard deviation of the random data
+        label (str): Label for the MTSerie (default 'random')
+        color (str): Color for plotting (default 'green')
+        plot_label (str): Plot label (default '')
+        plot_ref_val (float): Plot reference value (default 0)
+
+        Returns:
+        MTSerie: A new MTSerie instance containing the random TSerie
+        """
+        ts = TSerie.generate_random(start_mjd, end_mjd, dt_s, mean_val, std_val, label=label)
+        return cls(label=label, color=color, plot_label=plot_label, plot_ref_val=plot_ref_val, tseries=[ts])
