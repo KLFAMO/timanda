@@ -280,7 +280,7 @@ class MTSerie:
 
 
     def plot(self, color='', show=1, ax=None, zorder=1, marker=".", linestyle='none',
-             nolabels=False, time_unit='mjd'):
+             nolabels=False, time_unit='mjd', val_offset=0):
         for x in self.dtab:
             if time_unit == 'mjd':
                 xs = x.mjd_tab
@@ -291,11 +291,11 @@ class MTSerie:
                 color = self.color
             if ax is None:
                 plt.figure()
-                plt.plot(xs, x.val_tab-self.plot_ref_val,
+                plt.plot(xs, x.val_tab-self.plot_ref_val+val_offset,
                           color=color, marker=marker,
                          linestyle=linestyle, zorder=zorder)
             else:
-                ax.plot(xs, x.val_tab-self.plot_ref_val,
+                ax.plot(xs, x.val_tab-self.plot_ref_val+val_offset,
                         color=color, marker=marker,
                         linestyle=linestyle, zorder=zorder)
             if not nolabels:
