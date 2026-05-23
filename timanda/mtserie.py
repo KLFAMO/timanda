@@ -1043,7 +1043,7 @@ class MTSerie:
             return self
         it = first_tab
         ii = first_index
-        while (it<=last_tab or ii<=last_index):
+        while it < len(self.dtab) and (it < last_tab or (it == last_tab and ii <= last_index)):
             logging.info(
                 f"{self.dtab[it].val_tab[ii]}, {mts.mjd2val(self.dtab[it].mjd_tab[ii])}"
             )
